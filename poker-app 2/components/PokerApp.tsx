@@ -491,7 +491,6 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
             </div>
           ))}
         </Card>
-      </div>
 
       <button onClick={handleShare} disabled={imgStatus === 'loading'}
         style={{ width: '100%', marginTop: '1rem', background: imgStatus === 'copied' || imgStatus === 'downloaded' ? '#3B6D11' : '#185FA5', color: '#fff', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 600, cursor: imgStatus === 'loading' ? 'wait' : 'pointer' }}>
