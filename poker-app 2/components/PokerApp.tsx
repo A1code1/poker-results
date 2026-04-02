@@ -323,7 +323,7 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const h2cRef = useRef<Promise<any> | null>(null)
 
   useEffect(() => {
-    if (window.html2canvas) { h2cRef.current = Promise.resolve(window.html2canvas); return }
+    if ((window as any).html2canvas) { h2cRef.current = Promise.resolve((window as any).html2canvas); return }
     if (!document.getElementById('h2c-script')) {
       h2cRef.current = new Promise((res, rej) => {
         const s = document.createElement('script'); s.id = 'h2c-script'
