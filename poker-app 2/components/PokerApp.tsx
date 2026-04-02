@@ -646,7 +646,7 @@ export default function PokerApp() {
 
   // Load games from Supabase on mount
   useEffect(() => {
-    supabase.from('games').select('*').order('game_date', { ascending: false })
+    Promise.resolve(supabase.from('games').select('*').order('game_date', { ascending: false }))
       .then(({ data }) => { if (data) setGames(data as GameRecord[]); setGamesLoading(false) })
       .catch(() => setGamesLoading(false))
   }, [])
