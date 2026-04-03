@@ -8,30 +8,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing base64Image or mimeType' }, { status: 400 })
     }
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
+    const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 })
     }
 
-    const headers = {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    }
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
 
     // Step 1 — Vision: describe what is literally visible on the sheet
-    const describeResp = await fetch('https://api.anthropic.com/v1/messages', {
+    const describeResp = await fetch(geminiUrl, {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+        contents: [{
+          parts: [
+            { inlineData: { mimeType, data: base64Image } },
             {
-              type: 'text',
               text: `Look at this poker score sheet carefully. For each player row, describe EXACTLY what you see next to their name — specifically any vertical lines, tally marks, or numbers that represent buy-ins. Be very literal: count each individual stroke or line mark you can see. Also note the final chip count and any asterisk/star marker.
 
 Format your response as a plain list, one player per line, like:
@@ -45,16 +37,20 @@ Also note any date written on the sheet.`
     })
 
     const descData = await describeResp.json()
-    const description = descData.content?.map((c: { type: string; text?: string }) => c.text || '').join('') ?? ''
+    const description = descData.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') ?? ''
+
+    if (!description) {
+      return NextResponse.json({ error: 'Could not read image', detail: JSON.stringify(descData) }, { status: 500 })
+    }
 
     // Step 2 — Text: parse description into structured JSON
-    const parseResp = await fetch('https://api.anthropic.com/v1/messages', {
+    const parseResp = await fetch(geminiUrl, {
       method: 'POST',
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: `You are a poker results data parser. You will receive a text description of a poker score sheet (already read by a vision model) and must convert it into structured JSON.
+        systemInstruction: {
+          parts: [{
+            text: `You are a poker results data parser. You will receive a text description of a poker score sheet (already read by a vision model) and must convert it into structured JSON.
 
 Return ONLY a valid JSON object with this exact structure, no markdown, no explanation:
 {"date":"YYYY-MM-DD or null","players":[{"id":"1","name":"string","buyingCount":integer,"washoutChips":integer,"isHost":false,"confidence":{"name":0.0-1.0,"buyingCount":0.0-1.0,"washoutChips":0.0-1.0}}],"warnings":["string"]}
@@ -71,16 +67,19 @@ Rules for other fields:
 - name: clean name only, no asterisk or marker characters
 - washoutChips: the final chip count (integer >= 0)
 - date: if a date is mentioned in the description, convert to YYYY-MM-DD, else null
-- confidence: set buyingCount confidence to 0.6 if the description is ambiguous about the count`,
-        messages: [{
-          role: 'user',
-          content: `Here is the description of the poker sheet:\n\n${description}\n\nConvert this into the required JSON.`
+- confidence: set buyingCount confidence to 0.6 if the description is ambiguous about the count`
+          }]
+        },
+        contents: [{
+          parts: [{
+            text: `Here is the description of the poker sheet:\n\n${description}\n\nConvert this into the required JSON.`
+          }]
         }]
       })
     })
 
     const parseData = await parseResp.json()
-    const text = parseData.content?.map((c: { type: string; text?: string }) => c.text || '').join('') ?? ''
+    const text = parseData.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') ?? ''
     const clean = text.replace(/```json|```/g, '').trim()
     const result = JSON.parse(clean)
 
