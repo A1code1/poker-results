@@ -9,7 +9,6 @@ export default function GatePage() {
   const router = useRouter()
 
   useEffect(() => {
-    // If already authed this session, skip straight to app
     if (sessionStorage.getItem('poker-auth') === 'true') {
       router.replace('/game')
     } else {
@@ -34,15 +33,25 @@ export default function GatePage() {
     <div style={{
       minHeight: '100vh', display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', padding: '2rem',
-      background: '#f9f9f7',
+      backgroundImage: 'url(/poker-bg.png)',
+      backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+      position: 'relative',
     }}>
       <div style={{
-        background: '#fff', borderRadius: 20, padding: '2.5rem 2rem',
+        position: 'absolute', inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(2px)',
+      }} />
+      <div style={{
+        position: 'relative', zIndex: 1,
+        background: 'rgba(15, 17, 23, 0.85)', borderRadius: 24, padding: '2.5rem 2rem',
         width: '100%', maxWidth: 380, textAlign: 'center',
-        border: '0.5px solid #e0e0d8', boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+        backdropFilter: 'blur(20px)',
       }}>
-        <div style={{ fontSize: 52, marginBottom: 12 }}>♠️</div>
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 6, letterSpacing: -0.5 }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>&#9824;&#65039;</div>
+        <h1 style={{ fontSize: 26, fontWeight: 700, marginBottom: 6, letterSpacing: -0.5, color: '#fff' }}>
           Poker Results
         </h1>
         <p style={{ color: '#888', fontSize: 14, marginBottom: 28 }}>
@@ -57,15 +66,15 @@ export default function GatePage() {
           placeholder="Passcode"
           autoFocus
           style={{
-            width: '100%', padding: '12px 16px', fontSize: 16, borderRadius: 10,
-            border: error ? '1.5px solid #E24B4A' : '1px solid #ddd',
-            outline: 'none', marginBottom: 12, background: '#fafafa',
-            textAlign: 'center', letterSpacing: '0.2em',
+            width: '100%', padding: '12px 16px', fontSize: 16, borderRadius: 12,
+            border: error ? '1.5px solid #ef4444' : '1px solid rgba(255,255,255,0.12)',
+            outline: 'none', marginBottom: 12, background: 'rgba(255,255,255,0.06)',
+            textAlign: 'center', letterSpacing: '0.2em', color: '#fff',
           }}
         />
 
         {error && (
-          <p style={{ color: '#A32D2D', fontSize: 13, marginBottom: 12 }}>
+          <p style={{ color: '#ef4444', fontSize: 13, marginBottom: 12 }}>
             Wrong passcode — try again
           </p>
         )}
@@ -73,12 +82,12 @@ export default function GatePage() {
         <button
           onClick={submit}
           style={{
-            width: '100%', padding: '13px', background: '#1D9E75', color: '#fff',
-            border: 'none', borderRadius: 10, fontSize: 16, fontWeight: 600,
-            cursor: 'pointer',
+            width: '100%', padding: '13px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            color: '#fff', border: 'none', borderRadius: 12, fontSize: 16, fontWeight: 600,
+            cursor: 'pointer', transition: 'opacity 0.2s',
           }}
         >
-          Enter →
+          Enter
         </button>
       </div>
     </div>
