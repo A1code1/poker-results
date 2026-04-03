@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 })
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`
 
     // Step 1 — Vision: describe what is literally visible on the sheet
     const describeResp = await fetch(geminiUrl, {
@@ -36,10 +36,17 @@ Also note any date written on the sheet.`
       })
     })
 
+    if (!describeResp.ok) {
+      const errBody = await describeResp.text()
+      console.error('Gemini Vision API error:', describeResp.status, errBody)
+      return NextResponse.json({ error: 'Gemini API error', status: describeResp.status, detail: errBody }, { status: 500 })
+    }
+
     const descData = await describeResp.json()
     const description = descData.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') ?? ''
 
     if (!description) {
+      console.error('Empty description from Gemini:', JSON.stringify(descData))
       return NextResponse.json({ error: 'Could not read image', detail: JSON.stringify(descData) }, { status: 500 })
     }
 
