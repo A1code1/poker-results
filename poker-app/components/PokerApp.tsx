@@ -462,6 +462,8 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const [gameDate, setGameDate] = useState<string>(initDate || new Date().toISOString().slice(0, 10))
   const [dateSource, setDateSource] = useState<string>(initSource || 'today')
   const [editingDate, setEditingDate] = useState(false)
+  const [dateChanged, setDateChanged] = useState(false)
+  const [dateSaved, setDateSaved] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const h2cRef = useRef<Promise<any> | null>(null)
 
@@ -482,7 +484,7 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
     }
   }, [])
 
-  const handleDateChange = (val: string) => { setGameDate(val); setDateSource('manual'); onDateChange?.(val, 'manual') }
+  const handleDateChange = (val: string) => { setGameDate(val); setDateSource('manual'); setDateChanged(true); setDateSaved(false); onDateChange?.(val, 'manual') }
 
   const handleShare = async () => {
     setImgStatus('loading')
@@ -542,6 +544,13 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
               {dateSource && !editingDate && sourceLabels[dateSource] && (
                 <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
               )}
+              {dateChanged && gameId && !dateSaved && !editingDate && (
+                <button onClick={async () => {
+                  await supabase.from('games').update({ game_date: gameDate, date_source: dateSource }).eq('id', gameId)
+                  setDateChanged(false); setDateSaved(true); setTimeout(() => setDateSaved(false), 2000)
+                }} style={{ fontSize: 11, background: T.accent, color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>Save date</button>
+              )}
+              {dateSaved && <span style={{ fontSize: 11, color: T.greenText, fontWeight: 600 }}>✓ Saved</span>}
             </div>
           </div>
         </div>
