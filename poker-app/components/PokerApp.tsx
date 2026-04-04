@@ -37,11 +37,39 @@ function formatGameDate(isoDate: string | null): string | null {
 function fmt(n: number) { return Math.ceil(n) }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Player = { id: string; name: string; buyingCount: number; washoutChips: number; isHostDetected?: boolean; confidence?: Record<string, number> }
+type RegisteredPlayer = { id: string; name: string; created_at: string; is_active: boolean }
+type Player = { id: string; name: string; buyingCount: number; washoutChips: number; isHostDetected?: boolean; confidence?: Record<string, number>; registryId?: string | null; isOther?: boolean }
 type Result = Player & { isHost: boolean; purchasedChips: number; investedEuro: number; normalizedWashoutChips: number; pokerCashoutEuro: number; hostFeeEuro: number; hostFeeReceivedEuro: number; netBalanceEuro: number }
 type Transfer = { from: string; fromId: string; to: string; toId: string; amountEuro: number }
 type Summary = { totalPlayers: number; totalBuyings: number; totalInvestedEuro: number; totalPurchasedChips: number; totalWashoutChips: number; normalizationApplied: boolean; totalHostFeePool: number; hostName: string }
 type GameRecord = { id: string; players: Player[]; hostId: string; host_id?: string; gameDate: string | null; game_date?: string | null; dateSource: string | null; date_source?: string | null; summary: Summary; results: Result[]; settlements: Transfer[] }
+
+// ── Player matching ──────────────────────────────────────────────────────────
+function matchPlayer(ocrName: string, registry: RegisteredPlayer[]): RegisteredPlayer | null {
+  const n = ocrName.trim().toLowerCase()
+  if (!n) return null
+  // Pass 1: exact match
+  const exact = registry.find(r => r.name.trim().toLowerCase() === n)
+  if (exact) return exact
+  // Pass 2: starts-with (either direction)
+  const startsWith = registry.find(r => {
+    const rn = r.name.trim().toLowerCase()
+    return rn.startsWith(n) || n.startsWith(rn)
+  })
+  if (startsWith) return startsWith
+  // Pass 3: first-name match (min 3 chars)
+  const firstName = n.split(/\s+/)[0]
+  if (firstName.length >= 3) {
+    const firstMatch = registry.find(r => r.name.trim().toLowerCase().split(/\s+/)[0] === firstName)
+    if (firstMatch) return firstMatch
+  }
+  // Pass 4: substring containment (min 3 chars)
+  if (n.length >= 3) {
+    const sub = registry.find(r => r.name.trim().toLowerCase().includes(n) || n.includes(r.name.trim().toLowerCase()))
+    if (sub) return sub
+  }
+  return null
+}
 
 // ── Calculation ───────────────────────────────────────────────────────────────
 function calculate(players: Player[], hostId: string) {
@@ -151,7 +179,7 @@ function Btn({ children, onClick, variant = 'primary', style, disabled }: { chil
 }
 
 // ── Screen: Home ─────────────────────────────────────────────────────────────
-function HomeScreen({ onNewGame, onHistory, onTournament, onSignOut }: { onNewGame: () => void; onHistory: () => void; onTournament: () => void; onSignOut: () => void }) {
+function HomeScreen({ onNewGame, onHistory, onTournament, onSettings, onSignOut }: { onNewGame: () => void; onHistory: () => void; onTournament: () => void; onSettings: () => void; onSignOut: () => void }) {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: '3rem 1.5rem 2rem' }}>
       <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
@@ -174,7 +202,10 @@ function HomeScreen({ onNewGame, onHistory, onTournament, onSignOut }: { onNewGa
         ))}
       </div>
 
-      <button onClick={onSignOut} style={{ display: 'block', margin: '0 auto', background: 'none', border: 'none', color: T.textDim, fontSize: 13, cursor: 'pointer' }}>Sign out</button>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 20 }}>
+        <button onClick={onSettings} style={{ background: 'none', border: 'none', color: T.textDim, fontSize: 13, cursor: 'pointer' }}>⚙️ Manage players</button>
+        <button onClick={onSignOut} style={{ background: 'none', border: 'none', color: T.textDim, fontSize: 13, cursor: 'pointer' }}>Sign out</button>
+      </div>
     </div>
   )
 }
@@ -255,8 +286,19 @@ function UploadScreen({ onParsed, onManual, onBack }: { onParsed: (d: any) => vo
 }
 
 // ── Screen: Review ───────────────────────────────────────────────────────────
-function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSource, detectedHostId, onCalculate, onBack }: any) {
-  const [players, setPlayers] = useState<Player[]>(init.length > 0 ? init : [{ id: generateId(), name: '', buyingCount: 1, washoutChips: 0, confidence: {} }])
+function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSource, detectedHostId, registry, onCalculate, onBack }: any) {
+  const [players, setPlayers] = useState<Player[]>(() => {
+    const initial: Player[] = init.length > 0 ? init : [{ id: generateId(), name: '', buyingCount: 1, washoutChips: 0, confidence: {} }]
+    if (registry && registry.length > 0 && init.length > 0) {
+      return initial.map((p: Player) => {
+        if (p.registryId) return p
+        const match = matchPlayer(p.name, registry)
+        if (match) return { ...p, name: match.name, registryId: match.id, isOther: false }
+        return p
+      })
+    }
+    return initial
+  })
   const [hostId, setHostId] = useState<string | null>(detectedHostId || null)
   const [error, setError] = useState('')
 
@@ -328,15 +370,36 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
           {['Player name', 'Buyings', 'Cashout', '', 'Host'].map(h => <span key={h} style={{ fontSize: 11, color: T.textDim, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>)}
         </div>
         {players.map(p => (
-          <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 32px 60px', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-            <input value={p.name} onChange={e => update(p.id, 'name', e.target.value)} placeholder="Name"
-              style={{ background: lowConf(p, 'name') ? T.yellowBg : '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none' }} />
+          <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 32px 60px', gap: 8, marginBottom: 10, alignItems: 'start' }}>
+            <div>
+              <input value={p.name} onChange={e => { update(p.id, 'name', e.target.value); if (p.registryId) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, registryId: null, isOther: false } : x)) }} placeholder="Name"
+                style={{ background: lowConf(p, 'name') ? T.yellowBg : '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none', marginBottom: 4 }} />
+              {registry && registry.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <select value={p.isOther ? '__other__' : p.registryId || '__unlinked__'} onChange={e => {
+                    const val = e.target.value
+                    if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
+                    else if (val === '__unlinked__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: false, registryId: null } : x)) }
+                    else {
+                      const reg = registry.find((r: RegisteredPlayer) => r.id === val)
+                      if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
+                    }
+                  }} style={{ fontSize: 11, background: '#f0f0f5', border: `1px solid ${T.border}`, borderRadius: 6, padding: '2px 4px', color: T.textMuted, outline: 'none', flex: 1, maxWidth: 120 }}>
+                    <option value="__unlinked__">— Unlinked —</option>
+                    <option value="__other__">🎲 Guest</option>
+                    {registry.map((r: RegisteredPlayer) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                  {p.registryId && <span style={{ fontSize: 10, color: T.greenText, fontWeight: 600 }}>✓</span>}
+                  {p.isOther && <span style={{ fontSize: 10, color: T.yellowText, fontWeight: 600 }}>Guest</span>}
+                </div>
+              )}
+            </div>
             <input type="number" min="1" value={p.buyingCount} onChange={e => update(p.id, 'buyingCount', parseInt(e.target.value) || 1)}
               style={{ background: lowConf(p, 'buyingCount') ? T.yellowBg : '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none' }} />
             <input type="number" min="0" value={p.washoutChips} onChange={e => update(p.id, 'washoutChips', parseInt(e.target.value) || 0)}
               style={{ background: '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none' }} />
-            <button onClick={() => removeRow(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: 0 }}>✕</button>
-            <div style={{ textAlign: 'center' }}>
+            <button onClick={() => removeRow(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: 0, marginTop: 8 }}>✕</button>
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
               <input type="radio" name="host" checked={hostId === p.id} onChange={() => setHostId(p.id)} style={{ accentColor: T.accent, cursor: 'pointer', width: 16, height: 16 }} />
             </div>
           </div>
@@ -644,23 +707,89 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete, undoGame,
   )
 }
 
+// ── Screen: Settings ─────────────────────────────────────────────────────────
+function SettingsScreen({ registry, onBack, onAdd, onUpdate, onDelete }: { registry: RegisteredPlayer[]; onBack: () => void; onAdd: (name: string) => Promise<void>; onUpdate: (id: string, name: string) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+  const [newName, setNewName] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+
+  const handleAdd = async () => {
+    const name = newName.trim()
+    if (!name) return
+    await onAdd(name)
+    setNewName('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editId || !editName.trim()) return
+    await onUpdate(editId, editName.trim())
+    setEditId(null)
+    setEditName('')
+  }
+
+  return (
+    <div style={{ maxWidth: 480, margin: '0 auto', padding: '1.5rem 1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem' }}>
+        <BackBtn onClick={onBack} label="Home" />
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.text }}>Manage players</h2>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: T.textDim }}>{registry.length} player{registry.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <p style={{ color: T.textMuted, fontSize: 13, marginBottom: '1rem' }}>Add your regular players so names are auto-matched from score sheets. One-time guests can be marked as "Guest" during game entry.</p>
+
+      <Card style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAdd()} placeholder="Player name" style={{ flex: 1, background: '#f0f0f5', border: `1px solid ${T.border}`, borderRadius: 8, padding: '8px 12px', fontSize: 14, color: T.text, outline: 'none' }} />
+          <button onClick={handleAdd} style={{ background: T.accentGrad, color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Add</button>
+        </div>
+      </Card>
+
+      {registry.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>👥</div>
+          <p style={{ color: T.textMuted, fontSize: 14 }}>No players yet. Add your regular poker group above.</p>
+        </div>
+      )}
+
+      {registry.map(p => (
+        <div key={p.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '10px 14px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+          {editId === p.id ? (
+            <>
+              <input value={editName} onChange={e => setEditName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSaveEdit()} autoFocus style={{ flex: 1, background: '#f0f0f5', border: `1px solid ${T.accent}`, borderRadius: 6, padding: '6px 10px', fontSize: 14, color: T.text, outline: 'none' }} />
+              <button onClick={handleSaveEdit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.greenText, fontSize: 14, fontWeight: 600 }}>Save</button>
+              <button onClick={() => setEditId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 14 }}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: T.text }}>{p.name}</span>
+              <button onClick={() => { setEditId(p.id); setEditName(p.name) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 14 }}>✏️</button>
+              <button onClick={() => onDelete(p.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 14 }}>🗑️</button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Screen: Tournament ───────────────────────────────────────────────────────
 function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loading: boolean; onBack: () => void }) {
   const playerMap: Record<string, { name: string; games: number; totalNet: number; wins: number }> = {}
   games.forEach(g => {
-    ;(g.results as Result[]).forEach(r => {
-      const key = r.name.trim().toLowerCase()
+    const eligible = (g.results as Result[]).filter(r => !r.isOther)
+    eligible.forEach(r => {
+      const key = r.registryId || `name:${r.name.trim().toLowerCase()}`
       if (!playerMap[key]) playerMap[key] = { name: r.name, games: 0, totalNet: 0, wins: 0 }
       playerMap[key].games += 1
       const pokerOnlyNet = Math.ceil(r.pokerCashoutEuro - r.investedEuro)
       playerMap[key].totalNet += pokerOnlyNet
     })
-    const winner = [...(g.results as Result[])].sort((a, b) => {
+    const winner = [...eligible].sort((a, b) => {
       const aPoker = Math.ceil(a.pokerCashoutEuro - a.investedEuro)
       const bPoker = Math.ceil(b.pokerCashoutEuro - b.investedEuro)
       return bPoker - aPoker
     })[0]
-    if (winner) { const key = winner.name.trim().toLowerCase(); if (playerMap[key]) playerMap[key].wins += 1 }
+    if (winner) { const key = winner.registryId || `name:${winner.name.trim().toLowerCase()}`; if (playerMap[key]) playerMap[key].wins += 1 }
   })
   const rankings = Object.values(playerMap).sort((a, b) => b.totalNet - a.totalNet)
   const medals = ['🥇', '🥈', '🥉']
@@ -670,7 +799,8 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   let bestStreak = { name: '', streak: 0 }
   let currentStreak = { name: '', streak: 0 }
   sortedGames.forEach(g => {
-    const winner = [...(g.results as Result[])].sort((a, b) => {
+    const eligible = (g.results as Result[]).filter(r => !r.isOther)
+    const winner = [...eligible].sort((a, b) => {
       return Math.ceil(b.pokerCashoutEuro - b.investedEuro) - Math.ceil(a.pokerCashoutEuro - a.investedEuro)
     })[0]
     if (winner) {
@@ -684,7 +814,7 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   // Shopper — highest buyingCount in a single game
   let shopper = { name: '', buyings: 0 }
   games.forEach(g => {
-    ;(g.results as Result[]).forEach(r => {
+    ;(g.results as Result[]).filter(r => !r.isOther).forEach(r => {
       if (r.buyingCount > shopper.buyings) shopper = { name: r.name, buyings: r.buyingCount }
     })
   })
@@ -692,7 +822,7 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   // All time record — highest washoutChips in a single game
   let allTimeRecord = { name: '', chips: 0 }
   games.forEach(g => {
-    ;(g.results as Result[]).forEach(r => {
+    ;(g.results as Result[]).filter(r => !r.isOther).forEach(r => {
       const chips = Math.round(r.normalizedWashoutChips || r.washoutChips || 0)
       if (chips > allTimeRecord.chips) allTimeRecord = { name: r.name, chips }
     })
@@ -787,11 +917,17 @@ export default function PokerApp() {
   const [gamesLoading, setGamesLoading] = useState(true)
   const [viewingGame, setViewingGame] = useState<GameRecord | null>(null)
   const [undoState, setUndoState] = useState<{ game: GameRecord; timeoutId: ReturnType<typeof setTimeout> } | null>(null)
+  const [registry, setRegistry] = useState<RegisteredPlayer[]>([])
 
   useEffect(() => {
-    Promise.resolve(supabase.from('games').select('*').order('game_date', { ascending: false }))
-      .then(({ data }) => { if (data) setGames(data as GameRecord[]); setGamesLoading(false) })
-      .catch(() => setGamesLoading(false))
+    Promise.all([
+      Promise.resolve(supabase.from('games').select('*').order('game_date', { ascending: false })),
+      Promise.resolve(supabase.from('players').select('*').eq('is_active', true).order('name')),
+    ]).then(([gamesRes, playersRes]) => {
+      if (gamesRes.data) setGames(gamesRes.data as GameRecord[])
+      if (playersRes.data) setRegistry(playersRes.data as RegisteredPlayer[])
+      setGamesLoading(false)
+    }).catch(() => setGamesLoading(false))
   }, [])
 
   const handleSaveGame = async (record: any) => {
@@ -819,15 +955,29 @@ export default function PokerApp() {
     setUndoState(null)
   }
 
+  const handleAddPlayer = async (name: string) => {
+    const { data, error } = await supabase.from('players').insert({ name }).select().single()
+    if (!error && data) setRegistry(prev => [...prev, data as RegisteredPlayer].sort((a, b) => a.name.localeCompare(b.name)))
+  }
+  const handleUpdatePlayer = async (id: string, name: string) => {
+    const { error } = await supabase.from('players').update({ name }).eq('id', id)
+    if (!error) setRegistry(prev => prev.map(p => p.id === id ? { ...p, name } : p).sort((a, b) => a.name.localeCompare(b.name)))
+  }
+  const handleDeletePlayer = async (id: string) => {
+    const { error } = await supabase.from('players').update({ is_active: false }).eq('id', id)
+    if (!error) setRegistry(prev => prev.filter(p => p.id !== id))
+  }
+
   const handleDateChange = (date: string, source: string) => { setFinalGameDate(date); setFinalDateSource(source) }
 
   return (
     <div style={{ minHeight: '100vh', background: T.bg, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      {screen === 'home' && <HomeScreen onNewGame={() => setScreen('upload')} onHistory={() => setScreen('history')} onTournament={() => setScreen('tournament')} onSignOut={() => { sessionStorage.removeItem('poker-auth'); window.location.href = '/' }} />}
+      {screen === 'home' && <HomeScreen onNewGame={() => setScreen('upload')} onHistory={() => setScreen('history')} onTournament={() => setScreen('tournament')} onSettings={() => setScreen('settings')} onSignOut={() => { sessionStorage.removeItem('poker-auth'); window.location.href = '/' }} />}
       {screen === 'upload' && <UploadScreen onParsed={d => { setParsedData(d); setScreen('review') }} onManual={() => { setParsedData({ players: [], warnings: [], previewUrl: null, gameDate: new Date().toISOString().slice(0, 10), dateSource: 'today' }); setScreen('review') }} onBack={() => setScreen('home')} />}
-      {screen === 'review' && parsedData && <ReviewScreen {...parsedData} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('results') }} onBack={() => setScreen('upload')} />}
+      {screen === 'review' && parsedData && <ReviewScreen {...parsedData} registry={registry} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('results') }} onBack={() => setScreen('upload')} />}
       {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
       {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} undoGame={undoState?.game || null} onUndo={handleUndoDelete} />}
+      {screen === 'settings' && <SettingsScreen registry={registry} onBack={() => setScreen('home')} onAdd={handleAddPlayer} onUpdate={handleUpdatePlayer} onDelete={handleDeletePlayer} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
       {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} onBack={() => setScreen('history')} onHome={() => setScreen('home')} readOnly />}
     </div>
