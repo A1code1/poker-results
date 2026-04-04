@@ -330,7 +330,7 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate: initDate,
 
   const handleCalculate = () => {
     const err = validate(); if (err) { setError(err); return }
-    setError(''); onCalculate(players, hostId, gameDate, dateSource)
+    setError(''); onCalculate(players, hostId, gameDate || new Date().toISOString().slice(0, 10), dateSource || 'today')
   }
 
   const totalBuyings = players.reduce((s, p) => s + (parseInt(String(p.buyingCount)) || 0), 0)
@@ -459,8 +459,8 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const { summary, results, settlements } = calculate(players, hostId)
   const [imgStatus, setImgStatus] = useState('idle')
   const [linkCopied, setLinkCopied] = useState(false)
-  const [gameDate, setGameDate] = useState<string | null>(initDate)
-  const [dateSource, setDateSource] = useState<string | null>(initSource)
+  const [gameDate, setGameDate] = useState<string>(initDate || new Date().toISOString().slice(0, 10))
+  const [dateSource, setDateSource] = useState<string>(initSource || 'today')
   const [editingDate, setEditingDate] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const h2cRef = useRef<Promise<any> | null>(null)
