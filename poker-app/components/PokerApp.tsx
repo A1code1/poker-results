@@ -578,7 +578,7 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
 }
 
 // ── Screen: History ──────────────────────────────────────────────────────────
-function HistoryScreen({ games, loading, onBack, onViewGame, onDelete }: { games: GameRecord[]; loading: boolean; onBack: () => void; onViewGame: (g: GameRecord) => void; onDelete: (id: string) => void }) {
+function HistoryScreen({ games, loading, onBack, onViewGame, onDelete, undoGame, onUndo }: { games: GameRecord[]; loading: boolean; onBack: () => void; onViewGame: (g: GameRecord) => void; onDelete: (id: string) => void; undoGame: GameRecord | null; onUndo: () => void }) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   return (
@@ -589,11 +589,19 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete }: { games
         <span style={{ marginLeft: 'auto', fontSize: 12, color: T.textDim }}>{games.length} game{games.length !== 1 ? 's' : ''}</span>
       </div>
       {loading && <p style={{ color: T.textMuted, textAlign: 'center', padding: '2rem' }}>Loading...</p>}
-      {!loading && games.length === 0 && (
+      {!loading && games.length === 0 && !undoGame && (
         <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🃏</div>
           <p style={{ fontWeight: 500, margin: '0 0 6px', color: T.text }}>No games yet</p>
           <p style={{ color: T.textMuted, fontSize: 14 }}>Completed games will appear here.</p>
+        </div>
+      )}
+
+      {/* Undo toast */}
+      {undoGame && (
+        <div style={{ background: '#1a1a2e', color: '#fff', borderRadius: 12, padding: '12px 16px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, animation: 'fadeIn 0.2s' }}>
+          <span style={{ flex: 1, fontSize: 14 }}>Game deleted — {formatGameDate((undoGame as any).game_date || (undoGame as any).gameDate) || 'game'}</span>
+          <button onClick={onUndo} style={{ background: T.accent, color: '#fff', border: 'none', borderRadius: 8, padding: '6px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Undo</button>
         </div>
       )}
 
@@ -603,7 +611,7 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete }: { games
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '2rem', maxWidth: 380, width: '100%', textAlign: 'center' }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
             <h3 style={{ margin: '0 0 8px', color: T.text, fontSize: 18, fontWeight: 700 }}>Delete game?</h3>
-            <p style={{ color: T.textMuted, fontSize: 14, marginBottom: 20 }}>You are about to delete this game. This action cannot be undone. Are you sure?</p>
+            <p style={{ color: T.textMuted, fontSize: 14, marginBottom: 20 }}>You are about to delete this game. Are you sure?</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <Btn onClick={() => setDeleteId(null)} variant="ghost" style={{ flex: 1 }}>Cancel</Btn>
               <Btn onClick={() => { onDelete(deleteId); setDeleteId(null) }} variant="danger" style={{ flex: 1 }}>Delete</Btn>
@@ -778,6 +786,7 @@ export default function PokerApp() {
   const [games, setGames] = useState<GameRecord[]>([])
   const [gamesLoading, setGamesLoading] = useState(true)
   const [viewingGame, setViewingGame] = useState<GameRecord | null>(null)
+  const [undoState, setUndoState] = useState<{ game: GameRecord; timeoutId: ReturnType<typeof setTimeout> } | null>(null)
 
   useEffect(() => {
     Promise.resolve(supabase.from('games').select('*').order('game_date', { ascending: false }))
@@ -791,9 +800,23 @@ export default function PokerApp() {
     if (!error && data) setGames(prev => [data as GameRecord, ...prev])
   }
 
-  const handleDeleteGame = async (id: string) => {
-    const { error } = await supabase.from('games').delete().eq('id', id)
-    if (!error) setGames(prev => prev.filter(g => g.id !== id))
+  const handleDeleteGame = (id: string) => {
+    const deletedGame = games.find(g => g.id === id)
+    if (!deletedGame) return
+    if (undoState) { clearTimeout(undoState.timeoutId); supabase.from('games').delete().eq('id', undoState.game.id) }
+    setGames(prev => prev.filter(g => g.id !== id))
+    const timeoutId = setTimeout(async () => {
+      await supabase.from('games').delete().eq('id', id)
+      setUndoState(null)
+    }, 8000)
+    setUndoState({ game: deletedGame, timeoutId })
+  }
+
+  const handleUndoDelete = () => {
+    if (!undoState) return
+    clearTimeout(undoState.timeoutId)
+    setGames(prev => [...prev, undoState.game].sort((a, b) => ((b.game_date || b.gameDate) || '').localeCompare((a.game_date || a.gameDate) || '')))
+    setUndoState(null)
   }
 
   const handleDateChange = (date: string, source: string) => { setFinalGameDate(date); setFinalDateSource(source) }
@@ -804,7 +827,7 @@ export default function PokerApp() {
       {screen === 'upload' && <UploadScreen onParsed={d => { setParsedData(d); setScreen('review') }} onManual={() => { setParsedData({ players: [], warnings: [], previewUrl: null, gameDate: new Date().toISOString().slice(0, 10), dateSource: 'today' }); setScreen('review') }} onBack={() => setScreen('home')} />}
       {screen === 'review' && parsedData && <ReviewScreen {...parsedData} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('results') }} onBack={() => setScreen('upload')} />}
       {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
-      {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} />}
+      {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} undoGame={undoState?.game || null} onUndo={handleUndoDelete} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
       {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} onBack={() => setScreen('history')} onHome={() => setScreen('home')} readOnly />}
     </div>
