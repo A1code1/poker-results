@@ -657,6 +657,39 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   const rankings = Object.values(playerMap).sort((a, b) => b.totalNet - a.totalNet)
   const medals = ['🥇', '🥈', '🥉']
 
+  // Longest winning streak
+  const sortedGames = [...games].sort((a, b) => ((a.game_date || a.gameDate) || '').localeCompare((b.game_date || b.gameDate) || ''))
+  let bestStreak = { name: '', streak: 0 }
+  let currentStreak = { name: '', streak: 0 }
+  sortedGames.forEach(g => {
+    const winner = [...(g.results as Result[])].sort((a, b) => {
+      return Math.ceil(b.pokerCashoutEuro - b.investedEuro) - Math.ceil(a.pokerCashoutEuro - a.investedEuro)
+    })[0]
+    if (winner) {
+      const wName = winner.name.trim()
+      if (wName === currentStreak.name) { currentStreak.streak += 1 }
+      else { currentStreak = { name: wName, streak: 1 } }
+      if (currentStreak.streak > bestStreak.streak) bestStreak = { ...currentStreak }
+    }
+  })
+
+  // Shopper — highest buyingCount in a single game
+  let shopper = { name: '', buyings: 0 }
+  games.forEach(g => {
+    ;(g.results as Result[]).forEach(r => {
+      if (r.buyingCount > shopper.buyings) shopper = { name: r.name, buyings: r.buyingCount }
+    })
+  })
+
+  // All time record — highest washoutChips in a single game
+  let allTimeRecord = { name: '', chips: 0 }
+  games.forEach(g => {
+    ;(g.results as Result[]).forEach(r => {
+      const chips = Math.round(r.normalizedWashoutChips || r.washoutChips || 0)
+      if (chips > allTimeRecord.chips) allTimeRecord = { name: r.name, chips }
+    })
+  })
+
   return (
     <div style={{ maxWidth: 540, margin: '0 auto', padding: '1.5rem 1rem' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem' }}>
@@ -679,6 +712,28 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
             <MetricCard label="Games played" value={games.length} />
             <MetricCard label="Players" value={rankings.length} />
             <MetricCard label="Total pot" value={`\u20ac${games.reduce((s, g) => s + (g.summary as Summary).totalInvestedEuro, 0)}`} />
+          </div>
+
+          {/* Fun stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: '1.25rem' }}>
+            <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, marginBottom: 4 }}>🔥</div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Win streak</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{bestStreak.name || '—'}</div>
+              {bestStreak.streak > 0 && <div style={{ fontSize: 12, color: T.accent, fontWeight: 600 }}>{bestStreak.streak} in a row</div>}
+            </div>
+            <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, marginBottom: 4 }}>🛒</div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shopper</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{shopper.name || '—'}</div>
+              {shopper.buyings > 0 && <div style={{ fontSize: 12, color: T.accent, fontWeight: 600 }}>{shopper.buyings} buy-ins</div>}
+            </div>
+            <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, padding: '0.75rem', textAlign: 'center' }}>
+              <div style={{ fontSize: 22, marginBottom: 4 }}>💰</div>
+              <div style={{ fontSize: 11, color: T.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>All-time record</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: T.text }}>{allTimeRecord.name || '—'}</div>
+              {allTimeRecord.chips > 0 && <div style={{ fontSize: 12, color: T.accent, fontWeight: 600 }}>{allTimeRecord.chips} chips</div>}
+            </div>
           </div>
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
