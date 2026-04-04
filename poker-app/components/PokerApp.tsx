@@ -367,9 +367,10 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
 }
 
 // ── Screen: Results ──────────────────────────────────────────────────────────
-function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, onBack, onSave, onHome, onDateChange, readOnly }: any) {
+function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, gameId, onBack, onSave, onHome, onDateChange, readOnly }: any) {
   const { summary, results, settlements } = calculate(players, hostId)
   const [imgStatus, setImgStatus] = useState('idle')
+  const [linkCopied, setLinkCopied] = useState(false)
   const [gameDate, setGameDate] = useState<string | null>(initDate)
   const [dateSource, setDateSource] = useState<string | null>(initSource)
   const [editingDate, setEditingDate] = useState(false)
@@ -537,13 +538,22 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
           ))}
         </Card>
 
-      <Btn onClick={handleShare} disabled={imgStatus === 'loading'} variant={imgStatus === 'copied' || imgStatus === 'downloaded' ? 'ghost' : 'primary'} style={{ marginBottom: '1rem' }}>
+      <Btn onClick={handleShare} disabled={imgStatus === 'loading'} variant={imgStatus === 'copied' || imgStatus === 'downloaded' ? 'ghost' : 'primary'} style={{ marginBottom: 8 }}>
         {imgStatus === 'loading' && '⏳ Generating image...'}
         {imgStatus === 'copied' && '✓ Image copied — paste in WhatsApp!'}
         {imgStatus === 'downloaded' && '✓ Image saved — share from your photos!'}
         {imgStatus === 'error' && '⚠️ Could not generate image'}
         {imgStatus === 'idle' && '📸 Save as image to share'}
       </Btn>
+
+      {gameId && (
+        <Btn onClick={() => {
+          const url = `${window.location.origin}/game/${gameId}`
+          navigator.clipboard.writeText(url).then(() => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 3000) }).catch(() => { window.prompt('Copy this link:', url) })
+        }} variant="ghost" style={{ marginBottom: '1rem' }}>
+          {linkCopied ? '✓ Link copied!' : '🔗 Copy shareable link'}
+        </Btn>
+      )}
 
       <div style={{ margin: '1.25rem 0 0', borderTop: `1px solid ${T.border}`, paddingTop: '1rem', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <span style={{ fontSize: 22, flexShrink: 0 }}>🃏</span>
@@ -612,7 +622,10 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete }: { games
                 {(g.summary as Summary).totalPlayers} players &middot; &euro;{(g.summary as Summary).totalInvestedEuro} pot{winner && <span> &middot; 🥇 {winner.name}</span>}
               </div>
             </div>
-            <button onClick={(e) => { e.stopPropagation(); setDeleteId(g.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: '4px 8px', borderRadius: 6, transition: 'color 0.2s' }} title="Delete game">
+            <button onClick={(e) => { e.stopPropagation(); const url = `${window.location.origin}/game/${g.id}`; navigator.clipboard.writeText(url).catch(() => {}); const btn = e.currentTarget; btn.textContent = '✓'; setTimeout(() => { btn.textContent = '🔗' }, 2000) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: '4px 8px', borderRadius: 6 }} title="Copy link">
+              🔗
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); setDeleteId(g.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: '4px 8px', borderRadius: 6 }} title="Delete game">
               🗑️
             </button>
             <span style={{ color: T.textDim, fontSize: 18, cursor: 'pointer' }} onClick={() => onViewGame(g)}>›</span>
@@ -631,9 +644,14 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
       const key = r.name.trim().toLowerCase()
       if (!playerMap[key]) playerMap[key] = { name: r.name, games: 0, totalNet: 0, wins: 0 }
       playerMap[key].games += 1
-      playerMap[key].totalNet += r.netBalanceEuro
+      const pokerOnlyNet = Math.ceil(r.pokerCashoutEuro - r.investedEuro)
+      playerMap[key].totalNet += pokerOnlyNet
     })
-    const winner = [...(g.results as Result[])].sort((a, b) => b.netBalanceEuro - a.netBalanceEuro)[0]
+    const winner = [...(g.results as Result[])].sort((a, b) => {
+      const aPoker = Math.ceil(a.pokerCashoutEuro - a.investedEuro)
+      const bPoker = Math.ceil(b.pokerCashoutEuro - b.investedEuro)
+      return bPoker - aPoker
+    })[0]
     if (winner) { const key = winner.name.trim().toLowerCase(); if (playerMap[key]) playerMap[key].wins += 1 }
   })
   const rankings = Object.values(playerMap).sort((a, b) => b.totalNet - a.totalNet)
@@ -733,7 +751,7 @@ export default function PokerApp() {
       {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
       {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
-      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} onBack={() => setScreen('history')} onHome={() => setScreen('home')} readOnly />}
+      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} onBack={() => setScreen('history')} onHome={() => setScreen('home')} readOnly />}
     </div>
   )
 }
