@@ -544,13 +544,15 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
               {dateSource && !editingDate && sourceLabels[dateSource] && (
                 <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
               )}
-              {dateChanged && gameId && !dateSaved && !editingDate && (
+              {gameId && !editingDate && (
                 <button onClick={async () => {
-                  await supabase.from('games').update({ game_date: gameDate, date_source: dateSource }).eq('id', gameId)
-                  setDateChanged(false); setDateSaved(true); setTimeout(() => setDateSaved(false), 2000)
-                }} style={{ fontSize: 11, background: T.accent, color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>Save date</button>
+                  const { error } = await supabase.from('games').update({ game_date: gameDate, date_source: 'manual' }).eq('id', gameId)
+                  if (!error) { setDateChanged(false); setDateSaved(true); setDateSource('manual'); setTimeout(() => setDateSaved(false), 3000) }
+                  else { alert('Failed to save date') }
+                }} style={{ fontSize: 11, background: dateSaved ? T.greenBg : dateChanged ? T.accent : '#f0f0f5', color: dateSaved ? T.greenText : dateChanged ? '#fff' : T.textMuted, border: `1px solid ${dateSaved ? T.green : dateChanged ? T.accent : T.border}`, borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>
+                  {dateSaved ? '✓ Saved' : dateChanged ? 'Save date' : 'Update date'}
+                </button>
               )}
-              {dateSaved && <span style={{ fontSize: 11, color: T.greenText, fontWeight: 600 }}>✓ Saved</span>}
             </div>
           </div>
         </div>
