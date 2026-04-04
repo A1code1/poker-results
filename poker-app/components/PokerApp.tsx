@@ -369,13 +369,18 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 32px 60px', gap: 8, marginBottom: 8 }}>
           {['Player name', 'Buyings', 'Cashout', '', 'Host'].map(h => <span key={h} style={{ fontSize: 11, color: T.textDim, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>)}
         </div>
-        {players.map(p => (
+        {players.map(p => {
+          const isMatched = !!p.registryId
+          const isGuest = !!p.isOther
+          const isUnmatched = !isMatched && !isGuest && registry && registry.length > 0 && p.name.trim().length > 0
+          const borderColor = isMatched ? T.green : isGuest ? T.yellow : isUnmatched ? T.red : T.border
+          return (
           <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 32px 60px', gap: 8, marginBottom: 10, alignItems: 'start' }}>
-            <div>
-              <input value={p.name} onChange={e => { update(p.id, 'name', e.target.value); if (p.registryId) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, registryId: null, isOther: false } : x)) }} placeholder="Name"
-                style={{ background: lowConf(p, 'name') ? T.yellowBg : '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none', marginBottom: 4 }} />
-              {registry && registry.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${borderColor}`, borderRadius: 8, overflow: 'hidden' }}>
+                <input value={p.name} onChange={e => { update(p.id, 'name', e.target.value); if (p.registryId) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, registryId: null, isOther: false } : x)) }} placeholder="Name"
+                  style={{ background: 'transparent', borderRadius: 0, padding: '8px 10px', fontSize: 14, border: 'none', flex: 1, color: T.text, outline: 'none' }} />
+                {(isMatched || isGuest) && registry && registry.length > 0 && (
                   <select value={p.isOther ? '__other__' : p.registryId || '__unlinked__'} onChange={e => {
                     const val = e.target.value
                     if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
@@ -384,15 +389,30 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
                       const reg = registry.find((r: RegisteredPlayer) => r.id === val)
                       if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
                     }
-                  }} style={{ fontSize: 11, background: '#f0f0f5', border: `1px solid ${T.border}`, borderRadius: 6, padding: '2px 4px', color: T.textMuted, outline: 'none', flex: 1, maxWidth: 120 }}>
-                    <option value="__unlinked__">— Unlinked —</option>
-                    <option value="__other__">🎲 Guest</option>
+                  }} style={{ fontSize: 12, background: 'transparent', border: 'none', borderLeft: `1px solid ${T.border}`, padding: '4px 2px 4px 6px', color: T.textMuted, outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none', width: 24, textAlign: 'center' }} title="Change player">
+                    <option value="__unlinked__">—</option>
+                    <option value="__other__">Guest</option>
                     {registry.map((r: RegisteredPlayer) => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
-                  {p.registryId && <span style={{ fontSize: 10, color: T.greenText, fontWeight: 600 }}>✓</span>}
-                  {p.isOther && <span style={{ fontSize: 10, color: T.yellowText, fontWeight: 600 }}>Guest</span>}
-                </div>
-              )}
+                )}
+                {isUnmatched && registry && registry.length > 0 && (
+                  <select value="__unlinked__" onChange={e => {
+                    const val = e.target.value
+                    if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
+                    else if (val !== '__unlinked__') {
+                      const reg = registry.find((r: RegisteredPlayer) => r.id === val)
+                      if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
+                    }
+                  }} style={{ fontSize: 12, background: 'transparent', border: 'none', borderLeft: `1px solid ${T.border}`, padding: '4px 2px 4px 6px', color: T.redText, outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none', width: 24, textAlign: 'center' }} title="Link to known player or mark as guest">
+                    <option value="__unlinked__">?</option>
+                    <option value="__other__">Guest</option>
+                    {registry.map((r: RegisteredPlayer) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                  </select>
+                )}
+              </div>
+              {isMatched && <span style={{ fontSize: 10, color: T.greenText, fontWeight: 600, marginTop: 2, display: 'block' }}>✓ Matched</span>}
+              {isGuest && <span style={{ fontSize: 10, color: T.yellowText, fontWeight: 600, marginTop: 2, display: 'block' }}>🎲 Guest</span>}
+              {isUnmatched && <span style={{ fontSize: 10, color: T.redText, fontWeight: 600, marginTop: 2, display: 'block' }}>Not matched</span>}
             </div>
             <input type="number" min="1" value={p.buyingCount} onChange={e => update(p.id, 'buyingCount', parseInt(e.target.value) || 1)}
               style={{ background: lowConf(p, 'buyingCount') ? T.yellowBg : '#f0f0f5', borderRadius: 8, padding: '8px 10px', fontSize: 14, border: `1px solid ${T.border}`, width: '100%', color: T.text, outline: 'none' }} />
@@ -403,7 +423,7 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
               <input type="radio" name="host" checked={hostId === p.id} onChange={() => setHostId(p.id)} style={{ accentColor: T.accent, cursor: 'pointer', width: 16, height: 16 }} />
             </div>
           </div>
-        ))}
+        )})}
         <button onClick={addRow} style={{ marginTop: 8, background: 'none', border: `1px dashed rgba(0,0,0,0.15)`, borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13, color: T.textMuted, width: '100%' }}>+ Add player</button>
       </Card>
 
