@@ -708,7 +708,7 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete, undoGame,
         </div>
       )}
 
-      {[...games].reverse().map((g, i) => {
+      {[...games].sort((a, b) => ((b.game_date || b.gameDate) || '').localeCompare((a.game_date || a.gameDate) || '')).map((g, i) => {
         const winner = [...(g.results as Result[])].sort((a, b) => b.netBalanceEuro - a.netBalanceEuro)[0]
         return (
           <div key={g.id} style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '1rem 1.25rem', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
