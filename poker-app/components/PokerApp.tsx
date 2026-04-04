@@ -372,39 +372,35 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
         {players.map(p => {
           const isMatched = !!p.registryId
           const isGuest = !!p.isOther
-          const isUnmatched = !isMatched && !isGuest && registry && registry.length > 0 && p.name.trim().length > 0
+          const hasRegistry = registry && registry.length > 0
+          const isUnmatched = !isMatched && !isGuest && hasRegistry && p.name.trim().length > 0
           const borderColor = isMatched ? T.green : isGuest ? T.yellow : isUnmatched ? T.red : T.border
+          const handleNameChange = (newName: string) => {
+            const match = hasRegistry ? matchPlayer(newName, registry) : null
+            if (match) {
+              setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: match.name, registryId: match.id, isOther: false } : x))
+            } else {
+              setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: newName, registryId: null, isOther: false } : x))
+            }
+          }
+          const handleDropdown = (val: string) => {
+            if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
+            else if (val === '__unlinked__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: false, registryId: null } : x)) }
+            else {
+              const reg = registry.find((r: RegisteredPlayer) => r.id === val)
+              if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
+            }
+          }
           return (
           <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 32px 60px', gap: 8, marginBottom: 10, alignItems: 'start' }}>
             <div style={{ position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', border: `1.5px solid ${borderColor}`, borderRadius: 8, overflow: 'hidden' }}>
-                <input value={p.name} onChange={e => { update(p.id, 'name', e.target.value); if (p.registryId) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, registryId: null, isOther: false } : x)) }} placeholder="Name"
+                <input value={p.name} onChange={e => handleNameChange(e.target.value)} placeholder="Name"
                   style={{ background: 'transparent', borderRadius: 0, padding: '8px 10px', fontSize: 14, border: 'none', flex: 1, color: T.text, outline: 'none' }} />
-                {(isMatched || isGuest) && registry && registry.length > 0 && (
-                  <select value={p.isOther ? '__other__' : p.registryId || '__unlinked__'} onChange={e => {
-                    const val = e.target.value
-                    if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
-                    else if (val === '__unlinked__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: false, registryId: null } : x)) }
-                    else {
-                      const reg = registry.find((r: RegisteredPlayer) => r.id === val)
-                      if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
-                    }
-                  }} style={{ fontSize: 12, background: 'transparent', border: 'none', borderLeft: `1px solid ${T.border}`, padding: '4px 2px 4px 6px', color: T.textMuted, outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none', width: 24, textAlign: 'center' }} title="Change player">
-                    <option value="__unlinked__">—</option>
-                    <option value="__other__">Guest</option>
-                    {registry.map((r: RegisteredPlayer) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                  </select>
-                )}
-                {isUnmatched && registry && registry.length > 0 && (
-                  <select value="__unlinked__" onChange={e => {
-                    const val = e.target.value
-                    if (val === '__other__') { setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, isOther: true, registryId: null } : x)) }
-                    else if (val !== '__unlinked__') {
-                      const reg = registry.find((r: RegisteredPlayer) => r.id === val)
-                      if (reg) setPlayers(prev => prev.map(x => x.id === p.id ? { ...x, name: reg.name, registryId: reg.id, isOther: false } : x))
-                    }
-                  }} style={{ fontSize: 12, background: 'transparent', border: 'none', borderLeft: `1px solid ${T.border}`, padding: '4px 2px 4px 6px', color: T.redText, outline: 'none', cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none', width: 24, textAlign: 'center' }} title="Link to known player or mark as guest">
-                    <option value="__unlinked__">?</option>
+                {hasRegistry && (
+                  <select value={p.isOther ? '__other__' : p.registryId || '__unlinked__'} onChange={e => handleDropdown(e.target.value)}
+                    style={{ fontSize: 12, background: 'transparent', border: 'none', borderLeft: `1px solid ${T.border}`, padding: '4px 6px', color: isMatched ? T.greenText : isGuest ? T.yellowText : isUnmatched ? T.redText : T.textMuted, outline: 'none', cursor: 'pointer', minWidth: 28 }} title="Select player">
+                    <option value="__unlinked__">{p.name.trim() ? '?' : 'Pick...'}</option>
                     <option value="__other__">Guest</option>
                     {registry.map((r: RegisteredPlayer) => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
