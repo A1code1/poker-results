@@ -34,7 +34,7 @@ function formatGameDate(isoDate: string | null): string | null {
   } catch { return isoDate }
 }
 
-function fmt(n: number) { return Math.ceil(n) }
+function fmt(n: number) { return Math.round(n) }
 
 function formatShortDate(isoDate: string | null): string {
   if (!isoDate) return ''
@@ -98,7 +98,7 @@ function calculate(players: Player[], hostId: string) {
     const hostFeeEuro = isHost ? 0 : HOST_FEE
     const hostFeeReceivedEuro = isHost ? totalHostFeePool : 0
     const netBalanceEuro = pokerCashoutEuro - investedEuro - hostFeeEuro + hostFeeReceivedEuro
-    return { ...p, isHost, purchasedChips, investedEuro, normalizedWashoutChips: Math.round(normalizedWashoutChips * 100) / 100, pokerCashoutEuro, hostFeeEuro, hostFeeReceivedEuro, netBalanceEuro: Math.ceil(netBalanceEuro) }
+    return { ...p, isHost, purchasedChips, investedEuro, normalizedWashoutChips: Math.round(normalizedWashoutChips * 100) / 100, pokerCashoutEuro, hostFeeEuro, hostFeeReceivedEuro, netBalanceEuro: Math.round(netBalanceEuro) }
   })
 
   const settlements = computeSettlements(results)
@@ -114,7 +114,7 @@ function computeSettlements(results: Result[]): Transfer[] {
   while (debtors.length && creditors.length) {
     const debtor = debtors[0]; const creditor = creditors[0]
     const amount = Math.min(-debtor.balance, creditor.balance)
-    if (amount > 0) transfers.push({ from: debtor.name, fromId: debtor.id, to: creditor.name, toId: creditor.id, amountEuro: Math.ceil(amount / cs) })
+    if (amount > 0) transfers.push({ from: debtor.name, fromId: debtor.id, to: creditor.name, toId: creditor.id, amountEuro: Math.round(amount / cs) })
     debtor.balance += amount; creditor.balance -= amount
     if (Math.abs(debtor.balance) < 1) debtors.shift()
     if (Math.abs(creditor.balance) < 1) creditors.shift()
