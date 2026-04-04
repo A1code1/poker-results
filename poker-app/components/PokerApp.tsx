@@ -715,7 +715,7 @@ function HistoryScreen({ games, loading, onBack, onViewGame, onDelete, undoGame,
             <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => onViewGame(g)}>
               <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 4, color: T.text }}>{g.gameDate || g.game_date ? formatGameDate(g.gameDate || g.game_date || null) : `Game ${games.length - i}`}</div>
               <div style={{ fontSize: 12, color: T.textMuted }}>
-                {(g.summary as Summary).totalPlayers} players &middot; &euro;{(g.summary as Summary).totalInvestedEuro} pot{winner && <span> &middot; 🥇 {winner.name}</span>}
+                {(g.summary as Summary).totalPlayers} players &middot; {(g.summary as Summary).totalBuyings} buy-ins &middot; &euro;{(g.summary as Summary).totalInvestedEuro} pot{winner && <span> &middot; 🥇 {winner.name}</span>}
               </div>
             </div>
             <button onClick={(e) => { e.stopPropagation(); const url = `${window.location.origin}/game/${g.id}`; navigator.clipboard.writeText(url).catch(() => {}); const btn = e.currentTarget; btn.textContent = '✓'; setTimeout(() => { btn.textContent = '🔗' }, 2000) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: T.textDim, fontSize: 16, padding: '4px 8px', borderRadius: 6 }} title="Copy link">
