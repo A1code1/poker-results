@@ -1096,7 +1096,9 @@ export default function PokerApp() {
   }, [])
 
   const handleSaveGame = async (record: any) => {
-    const row = { game_date: record.gameDate, date_source: record.dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
+    const dateSource = record.dateSource || finalDateSource || 'today'
+    const row = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
     const { data, error } = await supabase.from('games').insert(row).select().single()
     if (!error && data) setGames(prev => [data as GameRecord, ...prev])
   }
