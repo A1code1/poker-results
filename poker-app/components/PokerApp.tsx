@@ -286,7 +286,10 @@ function UploadScreen({ onParsed, onManual, onBack }: { onParsed: (d: any) => vo
 }
 
 // ── Screen: Review ───────────────────────────────────────────────────────────
-function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSource, detectedHostId, registry, onCalculate, onBack }: any) {
+function ReviewScreen({ players: init, warnings, previewUrl, gameDate: initDate, dateSource: initDateSource, detectedHostId, registry, onCalculate, onBack }: any) {
+  const [gameDate, setGameDate] = useState<string | null>(initDate)
+  const [dateSource, setDateSource] = useState<string | null>(initDateSource)
+  const [editingDate, setEditingDate] = useState(false)
   const [players, setPlayers] = useState<Player[]>(() => {
     const initial: Player[] = init.length > 0 ? init : [{ id: generateId(), name: '', buyingCount: 1, washoutChips: 0, confidence: {} }]
     if (registry && registry.length > 0 && init.length > 0) {
@@ -341,14 +344,20 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate, dateSourc
         <BackBtn onClick={onBack} />
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.text }}>Review players</h2>
-          {gameDate && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-              <span style={{ fontSize: 13, color: T.textMuted }}>📅 {formatGameDate(gameDate)}</span>
-              {dateSource && sourceLabels[dateSource] && (
-                <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
-              )}
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            {editingDate ? (
+              <input type="date" value={gameDate || ''} autoFocus onChange={e => { setGameDate(e.target.value); setDateSource('manual') }} onBlur={() => setEditingDate(false)}
+                style={{ fontSize: 13, border: `1px solid ${T.accent}`, borderRadius: 6, padding: '3px 8px', color: T.text, background: '#f0f0f5' }} />
+            ) : (
+              <button onClick={() => setEditingDate(true)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 13, color: T.textMuted }}>📅 {gameDate ? formatGameDate(gameDate) : 'Set date'}</span>
+                <span style={{ fontSize: 11, color: T.textDim }}>✏️</span>
+              </button>
+            )}
+            {dateSource && !editingDate && sourceLabels[dateSource] && (
+              <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
+            )}
+          </div>
         </div>
       </div>
 
