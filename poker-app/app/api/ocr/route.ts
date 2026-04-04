@@ -13,7 +13,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 })
     }
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview']
+    const makeUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+    // Find a working model (skip rate-limited ones)
+    let geminiUrl = makeUrl(models[0])
+    for (const model of models) {
+      const testResp = await fetch(makeUrl(model), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: 'hi' }] }] }) })
+      if (testResp.ok) { geminiUrl = makeUrl(model); break }
+    }
 
     // Step 1 — Vision: describe what is literally visible on the sheet
     const describeResp = await fetch(geminiUrl, {
