@@ -1035,6 +1035,61 @@ function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; regi
             <MetricCard label="Best game" value={`€${Math.max(...dataPoints.map(d => d.value))}`} />
           </div>
 
+          {/* Trend & encouragement */}
+          {(() => {
+            const n = dataPoints.length
+            const wins = dataPoints.filter(d => d.value > 0).length
+            const losses = dataPoints.filter(d => d.value < 0).length
+            const winRate = n > 0 ? Math.round((wins / n) * 100) : 0
+            const recent3 = dataPoints.slice(-3)
+            const recentSum = recent3.reduce((s, d) => s + d.value, 0)
+            const recentWins = recent3.filter(d => d.value > 0).length
+            const bestGame = Math.max(...dataPoints.map(d => d.value))
+            const worstGame = Math.min(...dataPoints.map(d => d.value))
+            const avgResult = n > 0 ? Math.round(dataPoints.reduce((s, d) => s + d.value, 0) / n) : 0
+
+            let trend = ''
+            let emoji = ''
+            if (n < 2) { trend = 'Just getting started — too early to spot a trend.'; emoji = '🎯' }
+            else if (recentWins === 3) { trend = 'On fire! Won the last 3 games in a row.'; emoji = '🔥' }
+            else if (recentWins >= 2) { trend = 'Strong recent form — winning most recent games.'; emoji = '📈' }
+            else if (recentSum > 0) { trend = 'Trending upward lately — recent games are positive.'; emoji = '📈' }
+            else if (recent3.every(d => d.value < 0)) { trend = 'Tough stretch — last 3 games were losses. Turnaround coming?'; emoji = '💪' }
+            else if (recentSum < 0) { trend = 'Recent results are slightly down, but the tide can turn.'; emoji = '🌊' }
+            else { trend = 'Steady play — mixing wins and losses evenly.'; emoji = '⚖️' }
+
+            let status = ''
+            if (cumulative > 50) status = `Up €${cumulative} overall — solid profit. `
+            else if (cumulative > 0) status = `Slightly in the green at +€${cumulative}. `
+            else if (cumulative === 0) status = 'Perfectly break-even — the poker gods are watching. '
+            else if (cumulative > -50) status = `Just €${Math.abs(cumulative)} in the red — one good night away from profit. `
+            else status = `Down €${Math.abs(cumulative)} overall, but every session is a fresh start. `
+
+            let encouragement = ''
+            if (winRate >= 60) encouragement = `With a ${winRate}% win rate, you're one of the sharpest at the table. Keep reading those hands! 🃏`
+            else if (winRate >= 40) encouragement = `${winRate}% win rate — right in the mix. A few key hands could tip the balance your way. 👊`
+            else if (n >= 3) encouragement = `${winRate}% win rate so far — remember, variance is part of the game. Your breakthrough session is coming! 🎰`
+            else encouragement = 'Still early days — keep playing, keep learning, and the results will follow! 🚀'
+
+            return (
+              <Card style={{ marginBottom: '1.25rem', background: `linear-gradient(135deg, ${cumulative >= 0 ? '#f0fdf4' : '#fef7f0'}, ${T.surface})` }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 28, flexShrink: 0 }}>{emoji}</span>
+                  <div>
+                    <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: T.text }}>{playerName}&apos;s Overview</p>
+                    <p style={{ margin: '0 0 4px', fontSize: 13, color: T.textMuted, lineHeight: 1.5 }}>
+                      {status}{trend}
+                    </p>
+                    <p style={{ margin: '4px 0 0', fontSize: 13, color: T.textMuted, lineHeight: 1.5 }}>
+                      Avg result per game: <strong style={{ color: avgResult >= 0 ? T.greenText : T.redText }}>{avgResult >= 0 ? '+' : ''}€{avgResult}</strong> · Best: <strong style={{ color: T.greenText }}>+€{bestGame}</strong> · Worst: <strong style={{ color: T.redText }}>€{worstGame}</strong>
+                    </p>
+                    <p style={{ margin: '8px 0 0', fontSize: 13, color: T.accent, fontStyle: 'italic' }}>{encouragement}</p>
+                  </div>
+                </div>
+              </Card>
+            )
+          })()}
+
           {/* Per-game +/- bar chart */}
           <Card style={{ marginBottom: '1.25rem', padding: '1rem' }}>
             <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>{playerName} — Per Game P&L</p>
