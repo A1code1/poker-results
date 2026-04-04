@@ -36,6 +36,14 @@ function formatGameDate(isoDate: string | null): string | null {
 
 function fmt(n: number) { return Math.ceil(n) }
 
+function formatShortDate(isoDate: string | null): string {
+  if (!isoDate) return ''
+  try {
+    const [y, m, d] = isoDate.split('-')
+    return new Date(+y, +m - 1, +d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  } catch { return isoDate || '' }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 type RegisteredPlayer = { id: string; name: string; created_at: string; is_active: boolean }
 type Player = { id: string; name: string; buyingCount: number; washoutChips: number; isHostDetected?: boolean; confidence?: Record<string, number>; registryId?: string | null; isOther?: boolean }
@@ -1027,11 +1035,47 @@ function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; regi
             <MetricCard label="Best game" value={`€${Math.max(...dataPoints.map(d => d.value))}`} />
           </div>
 
-          {/* Chart */}
+          {/* Per-game +/- bar chart */}
+          <Card style={{ marginBottom: '1.25rem', padding: '1rem' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>{playerName} — Per Game P&L</p>
+            {(() => {
+              const BW = 500, BH = 200, B_PAD_L = 45, B_PAD_R = 10, B_PAD_T = 15, B_PAD_B = 45
+              const bChartW = BW - B_PAD_L - B_PAD_R
+              const bChartH = BH - B_PAD_T - B_PAD_B
+              const barVals = dataPoints.map(d => d.value)
+              const bMin = Math.min(0, ...barVals)
+              const bMax = Math.max(0, ...barVals)
+              const bRange = bMax - bMin || 1
+              const barW = Math.min(30, (bChartW / dataPoints.length) * 0.7)
+              const gap = bChartW / dataPoints.length
+              const bToY = (v: number) => B_PAD_T + bChartH - ((v - bMin) / bRange) * bChartH
+              const bZeroY = bToY(0)
+              return (
+                <svg viewBox={`0 0 ${BW} ${BH}`} style={{ width: '100%', height: 'auto' }}>
+                  {[0, 0.25, 0.5, 0.75, 1].map(f => {
+                    const v = bMin + f * bRange
+                    const y = bToY(v)
+                    return <g key={f}><line x1={B_PAD_L} y1={y} x2={BW - B_PAD_R} y2={y} stroke={T.border} strokeWidth="0.5" /><text x={B_PAD_L - 6} y={y + 3} textAnchor="end" fill={T.textDim} fontSize="9">€{Math.round(v)}</text></g>
+                  })}
+                  <line x1={B_PAD_L} y1={bZeroY} x2={BW - B_PAD_R} y2={bZeroY} stroke={T.textDim} strokeWidth="1" strokeDasharray="3,2" />
+                  {dataPoints.map((d, i) => {
+                    const x = B_PAD_L + gap * i + (gap - barW) / 2
+                    const y = d.value >= 0 ? bToY(d.value) : bZeroY
+                    const h = Math.abs(bToY(d.value) - bZeroY)
+                    return <g key={i}>
+                      <rect x={x} y={y} width={barW} height={Math.max(h, 1)} rx={2} fill={d.value >= 0 ? T.green : T.red} opacity={0.8} />
+                      <text x={x + barW / 2} y={BH - 6} textAnchor="middle" fill={T.textDim} fontSize="8" transform={`rotate(-40,${x + barW / 2},${BH - 6})`}>{formatShortDate(d.date)}</text>
+                    </g>
+                  })}
+                </svg>
+              )
+            })()}
+          </Card>
+
+          {/* Cumulative P&L chart */}
           <Card style={{ marginBottom: '1.25rem', padding: '1rem' }}>
             <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>{playerName} — Cumulative P&L</p>
             <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
-              {/* Grid lines */}
               {[0, 0.25, 0.5, 0.75, 1].map(f => {
                 const v = minV + f * range
                 const y = toY(v)
@@ -1040,25 +1084,19 @@ function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; regi
                   <text x={PAD_L - 8} y={y + 4} textAnchor="end" fill={T.textDim} fontSize="10">€{Math.round(v)}</text>
                 </g>
               })}
-              {/* Zero line */}
               <line x1={PAD_L} y1={zeroY} x2={W - PAD_R} y2={zeroY} stroke={T.textDim} strokeWidth="1" strokeDasharray="4,3" />
-              {/* Area fill */}
               {cumulativePoints.length > 1 && <path d={areaPath} fill={cumulative >= 0 ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)'} />}
-              {/* Line */}
               {cumulativePoints.length > 1 && <path d={linePath} fill="none" stroke={cumulative >= 0 ? T.green : T.red} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
-              {/* Data points */}
               {cumulativePoints.map((d, i) => (
                 <g key={i}>
                   <circle cx={toX(i)} cy={toY(d.cumValue)} r="4" fill={d.cumValue >= 0 ? T.green : T.red} stroke={T.surface} strokeWidth="2" />
-                  {/* Date labels - show first, last, and some middle ones */}
                   {(i === 0 || i === cumulativePoints.length - 1 || (cumulativePoints.length <= 8) || (i % Math.ceil(cumulativePoints.length / 5) === 0)) && (
                     <text x={toX(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === cumulativePoints.length - 1 ? 'end' : 'middle'} fill={T.textDim} fontSize="9" transform={`rotate(-30,${toX(i)},${H - 8})`}>
-                      {d.date.slice(5)}
+                      {formatShortDate(d.date)}
                     </text>
                   )}
                 </g>
               ))}
-              {/* Single point */}
               {cumulativePoints.length === 1 && <circle cx={toX(0)} cy={toY(cumulativePoints[0].cumValue)} r="6" fill={cumulativePoints[0].cumValue >= 0 ? T.green : T.red} stroke={T.surface} strokeWidth="2" />}
             </svg>
           </Card>
@@ -1068,7 +1106,7 @@ function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; regi
             <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>Game breakdown</p>
             {dataPoints.map((d, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < dataPoints.length - 1 ? `1px solid ${T.border}` : 'none' }}>
-                <span style={{ fontSize: 13, color: T.textMuted }}>{d.label}</span>
+                <span style={{ fontSize: 13, color: T.textMuted }}>{formatShortDate(d.date)}</span>
                 <span style={{ fontSize: 14, fontWeight: 600, color: d.value >= 0 ? T.greenText : T.redText, background: d.value >= 0 ? T.greenBg : T.redBg, padding: '2px 10px', borderRadius: 20 }}>
                   {d.value >= 0 ? '+' : ''}€{d.value}
                 </span>
