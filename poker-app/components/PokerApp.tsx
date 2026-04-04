@@ -179,7 +179,7 @@ function Btn({ children, onClick, variant = 'primary', style, disabled }: { chil
 }
 
 // ── Screen: Home ─────────────────────────────────────────────────────────────
-function HomeScreen({ onNewGame, onHistory, onTournament, onSettings, onSignOut }: { onNewGame: () => void; onHistory: () => void; onTournament: () => void; onSettings: () => void; onSignOut: () => void }) {
+function HomeScreen({ onNewGame, onHistory, onTournament, onAnalysis, onSettings, onSignOut }: { onNewGame: () => void; onHistory: () => void; onTournament: () => void; onAnalysis: () => void; onSettings: () => void; onSignOut: () => void }) {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: '3rem 1.5rem 2rem' }}>
       <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
@@ -192,8 +192,8 @@ function HomeScreen({ onNewGame, onHistory, onTournament, onSettings, onSignOut 
         <span style={{ fontSize: 20 }}>📷</span> New game results
       </Btn>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: '2.5rem' }}>
-        {[{ icon: '📋', label: 'Game history', sub: 'All past games', fn: onHistory }, { icon: '🏆', label: 'Tournament', sub: 'Overall rankings', fn: onTournament }].map(item => (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: '2.5rem' }}>
+        {[{ icon: '📋', label: 'History', sub: 'All past games', fn: onHistory }, { icon: '🏆', label: 'Tournament', sub: 'Rankings', fn: onTournament }, { icon: '📊', label: 'My Stats', sub: 'Personal P&L', fn: onAnalysis }].map(item => (
           <button key={item.label} onClick={item.fn} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '20px 12px', cursor: 'pointer', color: T.text, transition: 'border-color 0.2s' }}>
             <span style={{ fontSize: 28 }}>{item.icon}</span>
             <span style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</span>
@@ -930,6 +930,146 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   )
 }
 
+// ── Screen: Personal Analysis ────────────────────────────────────────────────
+function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; registry: RegisteredPlayer[]; onBack: () => void }) {
+  const [selectedPlayer, setSelectedPlayer] = useState<string>('')
+
+  // Get all unique player names from games (use registryId where available, fall back to name)
+  const allPlayers: { key: string; name: string }[] = []
+  const seen = new Set<string>()
+  games.forEach(g => {
+    ;(g.results as Result[]).filter(r => !r.isOther).forEach(r => {
+      const key = r.registryId || `name:${r.name.trim().toLowerCase()}`
+      if (!seen.has(key)) { seen.add(key); allPlayers.push({ key, name: r.name }) }
+    })
+  })
+  allPlayers.sort((a, b) => a.name.localeCompare(b.name))
+
+  // Get data points for selected player
+  const sortedGames = [...games].sort((a, b) => ((a.game_date || a.gameDate) || '').localeCompare((b.game_date || b.gameDate) || ''))
+  const dataPoints: { date: string; label: string; value: number }[] = []
+  if (selectedPlayer) {
+    sortedGames.forEach(g => {
+      const r = (g.results as Result[]).find(r => {
+        const key = r.registryId || `name:${r.name.trim().toLowerCase()}`
+        return key === selectedPlayer
+      })
+      if (r) {
+        const pokerNet = Math.ceil(r.pokerCashoutEuro - r.investedEuro)
+        const date = g.game_date || g.gameDate || ''
+        const label = formatGameDate(date) || date
+        dataPoints.push({ date, label, value: pokerNet })
+      }
+    })
+  }
+
+  // Cumulative data
+  let cumulative = 0
+  const cumulativePoints = dataPoints.map(d => { cumulative += d.value; return { ...d, cumValue: cumulative } })
+
+  // Chart dimensions
+  const W = 500, H = 250, PAD_L = 50, PAD_R = 20, PAD_T = 20, PAD_B = 40
+  const chartW = W - PAD_L - PAD_R
+  const chartH = H - PAD_T - PAD_B
+
+  const values = cumulativePoints.map(d => d.cumValue)
+  const minV = values.length ? Math.min(0, ...values) : -10
+  const maxV = values.length ? Math.max(0, ...values) : 10
+  const range = maxV - minV || 1
+
+  const toX = (i: number) => PAD_L + (cumulativePoints.length > 1 ? (i / (cumulativePoints.length - 1)) * chartW : chartW / 2)
+  const toY = (v: number) => PAD_T + chartH - ((v - minV) / range) * chartH
+  const zeroY = toY(0)
+
+  const linePath = cumulativePoints.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(d.cumValue).toFixed(1)}`).join(' ')
+  const areaPath = linePath + (cumulativePoints.length > 0 ? ` L${toX(cumulativePoints.length - 1).toFixed(1)},${zeroY.toFixed(1)} L${toX(0).toFixed(1)},${zeroY.toFixed(1)} Z` : '')
+
+  const playerName = allPlayers.find(p => p.key === selectedPlayer)?.name || ''
+
+  return (
+    <div style={{ maxWidth: 580, margin: '0 auto', padding: '1.5rem 1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem' }}>
+        <BackBtn onClick={onBack} label="Home" />
+        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.text }}>Personal Analysis</h2>
+      </div>
+
+      <Card style={{ marginBottom: '1.25rem' }}>
+        <p style={{ fontSize: 12, color: T.textMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 500 }}>Select player</p>
+        <select value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)} style={{ width: '100%', padding: '10px 12px', fontSize: 15, borderRadius: 8, border: `1px solid ${T.border}`, background: '#f0f0f5', color: T.text, outline: 'none', cursor: 'pointer' }}>
+          <option value="">— Choose a player —</option>
+          {allPlayers.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+        </select>
+      </Card>
+
+      {selectedPlayer && cumulativePoints.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+          <p style={{ color: T.textMuted, fontSize: 14 }}>No games found for this player.</p>
+        </div>
+      )}
+
+      {selectedPlayer && cumulativePoints.length > 0 && (
+        <>
+          {/* Summary stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: '1.25rem' }}>
+            <MetricCard label="Games" value={cumulativePoints.length} />
+            <MetricCard label="Total P&L" value={`${cumulative >= 0 ? '+' : ''}€${cumulative}`} />
+            <MetricCard label="Best game" value={`€${Math.max(...dataPoints.map(d => d.value))}`} />
+          </div>
+
+          {/* Chart */}
+          <Card style={{ marginBottom: '1.25rem', padding: '1rem' }}>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>{playerName} — Cumulative P&L</p>
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
+              {/* Grid lines */}
+              {[0, 0.25, 0.5, 0.75, 1].map(f => {
+                const v = minV + f * range
+                const y = toY(v)
+                return <g key={f}>
+                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={T.border} strokeWidth="1" />
+                  <text x={PAD_L - 8} y={y + 4} textAnchor="end" fill={T.textDim} fontSize="10">€{Math.round(v)}</text>
+                </g>
+              })}
+              {/* Zero line */}
+              <line x1={PAD_L} y1={zeroY} x2={W - PAD_R} y2={zeroY} stroke={T.textDim} strokeWidth="1" strokeDasharray="4,3" />
+              {/* Area fill */}
+              {cumulativePoints.length > 1 && <path d={areaPath} fill={cumulative >= 0 ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)'} />}
+              {/* Line */}
+              {cumulativePoints.length > 1 && <path d={linePath} fill="none" stroke={cumulative >= 0 ? T.green : T.red} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+              {/* Data points */}
+              {cumulativePoints.map((d, i) => (
+                <g key={i}>
+                  <circle cx={toX(i)} cy={toY(d.cumValue)} r="4" fill={d.cumValue >= 0 ? T.green : T.red} stroke={T.surface} strokeWidth="2" />
+                  {/* Date labels - show first, last, and some middle ones */}
+                  {(i === 0 || i === cumulativePoints.length - 1 || (cumulativePoints.length <= 8) || (i % Math.ceil(cumulativePoints.length / 5) === 0)) && (
+                    <text x={toX(i)} y={H - 8} textAnchor={i === 0 ? 'start' : i === cumulativePoints.length - 1 ? 'end' : 'middle'} fill={T.textDim} fontSize="9" transform={`rotate(-30,${toX(i)},${H - 8})`}>
+                      {d.date.slice(5)}
+                    </text>
+                  )}
+                </g>
+              ))}
+              {/* Single point */}
+              {cumulativePoints.length === 1 && <circle cx={toX(0)} cy={toY(cumulativePoints[0].cumValue)} r="6" fill={cumulativePoints[0].cumValue >= 0 ? T.green : T.red} stroke={T.surface} strokeWidth="2" />}
+            </svg>
+          </Card>
+
+          {/* Game-by-game breakdown */}
+          <Card>
+            <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 12px', color: T.text }}>Game breakdown</p>
+            {dataPoints.map((d, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < dataPoints.length - 1 ? `1px solid ${T.border}` : 'none' }}>
+                <span style={{ fontSize: 13, color: T.textMuted }}>{d.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: d.value >= 0 ? T.greenText : T.redText, background: d.value >= 0 ? T.greenBg : T.redBg, padding: '2px 10px', borderRadius: 20 }}>
+                  {d.value >= 0 ? '+' : ''}€{d.value}
+                </span>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function PokerApp() {
   const [screen, setScreen] = useState('home')
@@ -997,13 +1137,14 @@ export default function PokerApp() {
 
   return (
     <div style={{ minHeight: '100vh', background: T.bg, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
-      {screen === 'home' && <HomeScreen onNewGame={() => setScreen('upload')} onHistory={() => setScreen('history')} onTournament={() => setScreen('tournament')} onSettings={() => setScreen('settings')} onSignOut={() => { sessionStorage.removeItem('poker-auth'); window.location.href = '/' }} />}
+      {screen === 'home' && <HomeScreen onNewGame={() => setScreen('upload')} onHistory={() => setScreen('history')} onTournament={() => setScreen('tournament')} onAnalysis={() => setScreen('analysis')} onSettings={() => setScreen('settings')} onSignOut={() => { sessionStorage.removeItem('poker-auth'); window.location.href = '/' }} />}
       {screen === 'upload' && <UploadScreen onParsed={d => { setParsedData(d); setScreen('review') }} onManual={() => { setParsedData({ players: [], warnings: [], previewUrl: null, gameDate: new Date().toISOString().slice(0, 10), dateSource: 'today' }); setScreen('review') }} onBack={() => setScreen('home')} />}
       {screen === 'review' && parsedData && <ReviewScreen {...parsedData} registry={registry} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('results') }} onBack={() => setScreen('upload')} />}
       {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
       {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} undoGame={undoState?.game || null} onUndo={handleUndoDelete} />}
       {screen === 'settings' && <SettingsScreen registry={registry} onBack={() => setScreen('home')} onAdd={handleAddPlayer} onUpdate={handleUpdatePlayer} onDelete={handleDeletePlayer} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
+      {screen === 'analysis' && <AnalysisScreen games={games} registry={registry} onBack={() => setScreen('home')} />}
       {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} onBack={() => setScreen('history')} onHome={() => setScreen('home')} onDateChange={(date: string, source: string) => {
         supabase.from('games').update({ game_date: date, date_source: source }).eq('id', viewingGame.id)
         setGames(prev => prev.map(g => g.id === viewingGame.id ? { ...g, game_date: date, gameDate: date, date_source: source, dateSource: source } : g))
