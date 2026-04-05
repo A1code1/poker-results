@@ -463,7 +463,7 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate: initDate,
 }
 
 // ── Screen: Results ──────────────────────────────────────────────────────────
-function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, gameId, onBack, onSave, onHome, onDateChange, readOnly }: any) {
+function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, gameId, onBack, onSave, onHome, onDateChange, onEdit, onCancel, readOnly, saveLabel }: any) {
   const { summary, results, settlements } = calculate(players, hostId)
   const [imgStatus, setImgStatus] = useState('idle')
   const [linkCopied, setLinkCopied] = useState(false)
@@ -472,6 +472,7 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const [editingDate, setEditingDate] = useState(false)
   const [dateChanged, setDateChanged] = useState(false)
   const [dateSaved, setDateSaved] = useState(false)
+  const [showEditConfirm, setShowEditConfirm] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const h2cRef = useRef<Promise<any> | null>(null)
 
@@ -674,11 +675,34 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
 
       {!readOnly && onSave && (
         <Btn onClick={() => { onSave({ players, hostId, gameDate, dateSource, summary, results, settlements }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
-          💾 Save game & go home
+          {saveLabel || '💾 Save game & go home'}
         </Btn>
+      )}
+      {!readOnly && onCancel && (
+        <Btn onClick={onCancel} variant="ghost" style={{ marginTop: 8, opacity: 0.7 }}>Cancel</Btn>
       )}
       {(readOnly || !onSave) && onHome && (
         <Btn onClick={onHome} variant="ghost" style={{ marginTop: 10 }}>Home</Btn>
+      )}
+      {readOnly && gameId && onEdit && (
+        <>
+          <div style={{ marginTop: 40, textAlign: 'center' }}>
+            <button onClick={() => setShowEditConfirm(true)} style={{ background: 'none', border: 'none', color: T.textDim, fontSize: 12, cursor: 'pointer', opacity: 0.5 }}>Edit results</button>
+          </div>
+          {showEditConfirm && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+              <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '2rem', maxWidth: 380, width: '100%', textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+                <h3 style={{ margin: '0 0 8px', color: T.text, fontSize: 18, fontWeight: 700 }}>Edit official records?</h3>
+                <p style={{ color: T.textMuted, fontSize: 14, marginBottom: 20 }}>You are about to modify the official game records. Changes will affect settlements and tournament standings. Are you sure?</p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Btn onClick={() => setShowEditConfirm(false)} variant="ghost" style={{ flex: 1 }}>Cancel</Btn>
+                  <Btn onClick={() => { setShowEditConfirm(false); onEdit() }} variant="primary" style={{ flex: 1 }}>Edit game</Btn>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -1199,6 +1223,21 @@ export default function PokerApp() {
     }).catch(() => setGamesLoading(false))
   }, [])
 
+  const [editingGameId, setEditingGameId] = useState<string | null>(null)
+
+  const handleUpdateGame = async (record: any) => {
+    if (!editingGameId) return
+    const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
+    const dateSource = record.dateSource || finalDateSource || 'manual'
+    const row = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    const { data, error } = await supabase.from('games').update(row).eq('id', editingGameId).select().single()
+    if (!error && data) {
+      setGames(prev => prev.map(g => g.id === editingGameId ? data as GameRecord : g))
+      setViewingGame(data as GameRecord)
+    }
+    setEditingGameId(null)
+  }
+
   const handleSaveGame = async (record: any) => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
@@ -1255,7 +1294,13 @@ export default function PokerApp() {
         supabase.from('games').update({ game_date: date, date_source: source }).eq('id', viewingGame.id)
         setGames(prev => prev.map(g => g.id === viewingGame.id ? { ...g, game_date: date, gameDate: date, date_source: source, dateSource: source } : g))
         setViewingGame(prev => prev ? { ...prev, game_date: date, gameDate: date, date_source: source, dateSource: source } : prev)
+      }} onEdit={() => {
+        setEditingGameId(viewingGame.id)
+        setParsedData({ players: viewingGame.players, warnings: [], previewUrl: null, gameDate: viewingGame.game_date || viewingGame.gameDate, dateSource: viewingGame.date_source || viewingGame.dateSource, detectedHostId: viewingGame.host_id || viewingGame.hostId })
+        setScreen('edit-game')
       }} readOnly />}
+      {screen === 'edit-game' && parsedData && <ReviewScreen {...parsedData} registry={registry} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('edit-results') }} onBack={() => { setEditingGameId(null); setScreen('view-game') }} />}
+      {screen === 'edit-results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('edit-game')} onSave={(record: any) => { handleUpdateGame(record) }} saveLabel="✅ Update game record" onCancel={() => { setEditingGameId(null); setScreen('view-game') }} onDateChange={handleDateChange} />}
     </div>
   )
 }
