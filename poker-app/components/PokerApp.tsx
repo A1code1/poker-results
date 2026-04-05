@@ -674,7 +674,7 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
       </div>{/* end cardRef */}
 
       {!readOnly && onSave && (
-        <Btn onClick={() => { onSave({ players, hostId, gameDate, dateSource, summary, results, settlements }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
+        <Btn onClick={async () => { await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
           {saveLabel || '💾 Save game & go home'}
         </Btn>
       )}
@@ -1234,8 +1234,11 @@ export default function PokerApp() {
     if (!error && data) {
       setGames(prev => prev.map(g => g.id === editingGameId ? data as GameRecord : g))
       setViewingGame(data as GameRecord)
+      setEditingGameId(null)
+      setScreen('view-game')
+    } else {
+      alert('Failed to update game. Please try again.')
     }
-    setEditingGameId(null)
   }
 
   const handleSaveGame = async (record: any) => {
@@ -1300,7 +1303,7 @@ export default function PokerApp() {
         setScreen('edit-game')
       }} readOnly />}
       {screen === 'edit-game' && parsedData && <ReviewScreen {...parsedData} registry={registry} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('edit-results') }} onBack={() => { setEditingGameId(null); setScreen('view-game') }} />}
-      {screen === 'edit-results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('edit-game')} onSave={(record: any) => { handleUpdateGame(record) }} saveLabel="✅ Update game record" onCancel={() => { setEditingGameId(null); setScreen('view-game') }} onDateChange={handleDateChange} />}
+      {screen === 'edit-results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('edit-game')} onSave={async (record: any) => { await handleUpdateGame(record) }} saveLabel="✅ Update game record" onCancel={() => { setEditingGameId(null); setScreen('view-game') }} onDateChange={handleDateChange} />}
     </div>
   )
 }
