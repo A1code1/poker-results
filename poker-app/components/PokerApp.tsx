@@ -941,6 +941,31 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
               {allTimeRecord.chips > 0 && <div style={{ fontSize: 12, color: T.accent, fontWeight: 600 }}>{allTimeRecord.chips} chips</div>}
             </div>
           </div>
+
+          {/* Most committed players */}
+          {rankings.length > 0 && (
+            <Card style={{ marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 20 }}>🎖️</span>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: 0, color: T.text }}>Most Committed</p>
+              </div>
+              {[...rankings].sort((a, b) => b.games - a.games).slice(0, 5).map((p, i) => {
+                const pct = games.length > 0 ? Math.round((p.games / games.length) * 100) : 0
+                return (
+                  <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: i < Math.min(rankings.length, 5) - 1 ? `1px solid ${T.border}` : 'none' }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: T.textDim, width: 20 }}>{i + 1}</span>
+                    <span style={{ fontSize: 14, fontWeight: 500, color: T.text, flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: 12, color: T.textMuted }}>{p.games}/{games.length} games</span>
+                    <div style={{ width: 60, height: 6, background: T.border, borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: T.accent, borderRadius: 3 }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: T.accent, fontWeight: 600, width: 35, textAlign: 'right' }}>{pct}%</span>
+                  </div>
+                )
+              })}
+            </Card>
+          )}
+
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
