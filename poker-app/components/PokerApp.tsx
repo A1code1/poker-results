@@ -50,7 +50,7 @@ type Player = { id: string; name: string; buyingCount: number; washoutChips: num
 type Result = Player & { isHost: boolean; purchasedChips: number; investedEuro: number; normalizedWashoutChips: number; pokerCashoutEuro: number; hostFeeEuro: number; hostFeeReceivedEuro: number; netBalanceEuro: number }
 type Transfer = { from: string; fromId: string; to: string; toId: string; amountEuro: number }
 type Summary = { totalPlayers: number; totalBuyings: number; totalInvestedEuro: number; totalPurchasedChips: number; totalWashoutChips: number; normalizationApplied: boolean; totalHostFeePool: number; hostName: string }
-type GameRecord = { id: string; players: Player[]; hostId: string; host_id?: string; gameDate: string | null; game_date?: string | null; dateSource: string | null; date_source?: string | null; summary: Summary; results: Result[]; settlements: Transfer[] }
+type GameRecord = { id: string; players: Player[]; hostId: string; host_id?: string; gameDate: string | null; game_date?: string | null; dateSource: string | null; date_source?: string | null; summary: Summary; results: Result[]; settlements: Transfer[]; scoresheet_url?: string | null }
 
 // ── Player matching ──────────────────────────────────────────────────────────
 function matchPlayer(ocrName: string, registry: RegisteredPlayer[]): RegisteredPlayer | null {
@@ -463,7 +463,7 @@ function ReviewScreen({ players: init, warnings, previewUrl, gameDate: initDate,
 }
 
 // ── Screen: Results ──────────────────────────────────────────────────────────
-function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, gameId, onBack, onSave, onHome, onDateChange, onEdit, onCancel, readOnly, saveLabel }: any) {
+function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSource, gameId, onBack, onSave, onHome, onDateChange, onEdit, onCancel, readOnly, saveLabel, previewUrl, scoresheetUrl }: any) {
   const { summary, results, settlements } = calculate(players, hostId)
   const [imgStatus, setImgStatus] = useState('idle')
   const [linkCopied, setLinkCopied] = useState(false)
@@ -473,6 +473,8 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const [dateChanged, setDateChanged] = useState(false)
   const [dateSaved, setDateSaved] = useState(false)
   const [showEditConfirm, setShowEditConfirm] = useState(false)
+  const [showPhoto, setShowPhoto] = useState(false)
+  const photoUrl = scoresheetUrl || previewUrl
   const cardRef = useRef<HTMLDivElement>(null)
   const h2cRef = useRef<Promise<any> | null>(null)
 
@@ -552,6 +554,9 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
               )}
               {dateSource && !editingDate && sourceLabels[dateSource] && (
                 <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
+              )}
+              {photoUrl && !editingDate && (
+                <button onClick={() => setShowPhoto(true)} style={{ fontSize: 11, color: T.accent, background: '#eef2ff', border: `1px solid #c7d2fe`, padding: '2px 8px', borderRadius: 20, fontWeight: 500, cursor: 'pointer' }}>📷 From file results</button>
               )}
               {gameId && !editingDate && (
                 <button onClick={async () => {
@@ -673,8 +678,18 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
 
       </div>{/* end cardRef */}
 
+      {/* Photo overlay */}
+      {showPhoto && photoUrl && (
+        <div onClick={() => setShowPhoto(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: 640, width: '100%' }}>
+            <button onClick={() => setShowPhoto(false)} style={{ position: 'absolute', top: -14, right: -14, background: '#fff', border: 'none', borderRadius: '50%', width: 32, height: 32, fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1, boxShadow: '0 2px 8px rgba(0,0,0,0.3)', lineHeight: 1 }}>×</button>
+            <img src={photoUrl} alt="score sheet" style={{ width: '100%', borderRadius: 12, maxHeight: '80vh', objectFit: 'contain', display: 'block' }} />
+          </div>
+        </div>
+      )}
+
       {!readOnly && onSave && (
-        <Btn onClick={async () => { await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
+        <Btn onClick={async () => { await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements, previewUrl }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
           {saveLabel || '💾 Save game & go home'}
         </Btn>
       )}
@@ -1269,7 +1284,21 @@ export default function PokerApp() {
   const handleSaveGame = async (record: any) => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
-    const row = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    let scoresheetUrl: string | null = null
+    if (record.previewUrl) {
+      try {
+        const res = await fetch(record.previewUrl)
+        const blob = await res.blob()
+        const ext = blob.type.includes('png') ? 'png' : 'jpg'
+        const fileName = `${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('scoresheets').upload(fileName, blob, { contentType: blob.type })
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('scoresheets').getPublicUrl(fileName)
+          scoresheetUrl = urlData.publicUrl
+        }
+      } catch { /* upload failed — save without image */ }
+    }
+    const row = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId, scoresheet_url: scoresheetUrl }
     const { data, error } = await supabase.from('games').insert(row).select().single()
     if (!error && data) setGames(prev => [data as GameRecord, ...prev])
   }
@@ -1313,12 +1342,12 @@ export default function PokerApp() {
       {screen === 'home' && <HomeScreen onNewGame={() => setScreen('upload')} onHistory={() => setScreen('history')} onTournament={() => setScreen('tournament')} onAnalysis={() => setScreen('analysis')} onSettings={() => setScreen('settings')} onSignOut={() => { sessionStorage.removeItem('poker-auth'); window.location.href = '/' }} />}
       {screen === 'upload' && <UploadScreen onParsed={d => { setParsedData(d); setScreen('review') }} onManual={() => { setParsedData({ players: [], warnings: [], previewUrl: null, gameDate: new Date().toISOString().slice(0, 10), dateSource: 'today' }); setScreen('review') }} onBack={() => setScreen('home')} />}
       {screen === 'review' && parsedData && <ReviewScreen {...parsedData} registry={registry} onCalculate={(players: Player[], hostId: string, gameDate: string, dateSource: string) => { setFinalPlayers(players); setFinalHostId(hostId); setFinalGameDate(gameDate); setFinalDateSource(dateSource); setScreen('results') }} onBack={() => setScreen('upload')} />}
-      {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
+      {screen === 'results' && finalPlayers && <ResultsScreen players={finalPlayers} hostId={finalHostId} gameDate={finalGameDate} dateSource={finalDateSource} previewUrl={parsedData?.previewUrl} onBack={() => setScreen('review')} onSave={handleSaveGame} onHome={() => setScreen('home')} onDateChange={handleDateChange} />}
       {screen === 'history' && <HistoryScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} onViewGame={g => { setViewingGame(g); setScreen('view-game') }} onDelete={handleDeleteGame} undoGame={undoState?.game || null} onUndo={handleUndoDelete} />}
       {screen === 'settings' && <SettingsScreen registry={registry} onBack={() => setScreen('home')} onAdd={handleAddPlayer} onUpdate={handleUpdatePlayer} onDelete={handleDeletePlayer} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
       {screen === 'analysis' && <AnalysisScreen games={games} registry={registry} onBack={() => setScreen('home')} />}
-      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} onBack={() => setScreen('history')} onHome={() => setScreen('home')} onDateChange={(date: string, source: string) => {
+      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} scoresheetUrl={viewingGame.scoresheet_url} onBack={() => setScreen('history')} onHome={() => setScreen('home')} onDateChange={(date: string, source: string) => {
         supabase.from('games').update({ game_date: date, date_source: source }).eq('id', viewingGame.id)
         setGames(prev => prev.map(g => g.id === viewingGame.id ? { ...g, game_date: date, gameDate: date, date_source: source, dateSource: source } : g))
         setViewingGame(prev => prev ? { ...prev, game_date: date, gameDate: date, date_source: source, dateSource: source } : prev)

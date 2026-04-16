@@ -13,6 +13,9 @@ create table if not exists games (
   host_id text
 );
 
+-- Add scoresheet_url column (run if table already exists)
+alter table games add column if not exists scoresheet_url text;
+
 -- Index for fast date ordering
 create index if not exists games_game_date_idx on games (game_date desc);
 
