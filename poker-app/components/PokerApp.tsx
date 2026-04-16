@@ -849,12 +849,12 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
       const key = r.registryId || `name:${r.name.trim().toLowerCase()}`
       if (!playerMap[key]) playerMap[key] = { name: r.name, games: 0, totalNet: 0, wins: 0 }
       playerMap[key].games += 1
-      const pokerOnlyNet = Math.ceil(r.pokerCashoutEuro - r.investedEuro)
+      const pokerOnlyNet = Math.round(r.pokerCashoutEuro - r.investedEuro)
       playerMap[key].totalNet += pokerOnlyNet
     })
     const winner = [...eligible].sort((a, b) => {
-      const aPoker = Math.ceil(a.pokerCashoutEuro - a.investedEuro)
-      const bPoker = Math.ceil(b.pokerCashoutEuro - b.investedEuro)
+      const aPoker = Math.round(a.pokerCashoutEuro - a.investedEuro)
+      const bPoker = Math.round(b.pokerCashoutEuro - b.investedEuro)
       return bPoker - aPoker
     })[0]
     if (winner) { const key = winner.registryId || `name:${winner.name.trim().toLowerCase()}`; if (playerMap[key]) playerMap[key].wins += 1 }
@@ -869,7 +869,7 @@ function TournamentScreen({ games, loading, onBack }: { games: GameRecord[]; loa
   sortedGames.forEach(g => {
     const eligible = (g.results as Result[]).filter(r => !r.isOther)
     const winner = [...eligible].sort((a, b) => {
-      return Math.ceil(b.pokerCashoutEuro - b.investedEuro) - Math.ceil(a.pokerCashoutEuro - a.investedEuro)
+      return Math.round(b.pokerCashoutEuro - b.investedEuro) - Math.round(a.pokerCashoutEuro - a.investedEuro)
     })[0]
     if (winner) {
       const wName = winner.name.trim()
@@ -1023,7 +1023,7 @@ function AnalysisScreen({ games, registry, onBack }: { games: GameRecord[]; regi
         return key === selectedPlayer
       })
       if (r) {
-        const pokerNet = Math.ceil(r.pokerCashoutEuro - r.investedEuro)
+        const pokerNet = Math.round(r.pokerCashoutEuro - r.investedEuro)
         const date = g.game_date || g.gameDate || ''
         const label = formatGameDate(date) || date
         dataPoints.push({ date, label, value: pokerNet })
