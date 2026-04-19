@@ -598,9 +598,6 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
               {dateSource && !editingDate && sourceLabels[dateSource] && (
                 <span style={{ fontSize: 11, color: sourceLabels[dateSource][1], background: '#f0f0f5', padding: '2px 8px', borderRadius: 20, fontWeight: 500 }}>{sourceLabels[dateSource][0]}</span>
               )}
-              {photoUrl && !editingDate && (
-                <button onClick={() => setShowPhoto(true)} style={{ fontSize: 11, color: T.accent, background: '#eef2ff', border: `1px solid #c7d2fe`, padding: '2px 8px', borderRadius: 20, fontWeight: 500, cursor: 'pointer' }}>📷 From file results</button>
-              )}
               {gameId && !editingDate && (
                 <button onClick={async () => {
                   const { error } = await supabase.from('games').update({ game_date: gameDate, date_source: 'manual' }).eq('id', gameId)
@@ -614,13 +611,21 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: photoUrl ? '0.75rem' : '1.25rem' }}>
           <MetricCard label="Players" value={summary.totalPlayers} />
           <MetricCard label="Total buyings" value={summary.totalBuyings} />
           <MetricCard label="Pot size" value={`\u20ac${summary.totalInvestedEuro}`} />
           <MetricCard label="Host fee pool" value={`\u20ac${summary.totalHostFeePool}`} />
           <MetricCard label="Host" value={summary.hostName} />
         </div>
+
+        {photoUrl && (
+          <button onClick={() => setShowPhoto(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: `1px solid #c7d2fe`, borderRadius: 10, padding: '10px 16px', marginBottom: '1.25rem', cursor: 'pointer', width: '100%', fontSize: 14, color: T.accent, fontWeight: 600 }}>
+            <span style={{ fontSize: 20 }}>📷</span>
+            <span>View score sheet</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: T.textMuted, fontWeight: 400 }}>tap to open</span>
+          </button>
+        )}
 
         {summary.normalizationApplied && (
           <div style={{ background: T.yellowBg, border: `1px solid rgba(234,179,8,0.3)`, borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: 13, color: T.yellowText }}>
