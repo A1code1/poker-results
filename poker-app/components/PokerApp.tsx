@@ -36,6 +36,46 @@ function formatGameDate(isoDate: string | null): string | null {
 
 function fmt(n: number) { return Math.round(n) }
 
+// Normalise any common date string to YYYY-MM-DD, returns null if unparseable
+function normalizeDateStr(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = raw.trim()
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s
+  // DD.MM.YYYY  or  D.M.YYYY
+  const dotLong = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+  if (dotLong) return `${dotLong[3]}-${dotLong[2].padStart(2,'0')}-${dotLong[1].padStart(2,'0')}`
+  // DD.MM.YY  or  D.M.YY  →  assume 20YY
+  const dotShort = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2})$/)
+  if (dotShort) return `20${dotShort[3]}-${dotShort[2].padStart(2,'0')}-${dotShort[1].padStart(2,'0')}`
+  // DD/MM/YYYY or D/M/YYYY
+  const slashLong = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (slashLong) return `${slashLong[3]}-${slashLong[2].padStart(2,'0')}-${slashLong[1].padStart(2,'0')}`
+  // DD/MM/YY
+  const slashShort = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/)
+  if (slashShort) return `20${slashShort[3]}-${slashShort[2].padStart(2,'0')}-${slashShort[1].padStart(2,'0')}`
+  return null
+}
+
+// Compress a data-URL image to a small JPEG data-URL (max 900px wide, quality 0.65)
+async function compressImage(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const MAX = 900
+      const scale = img.width > MAX ? MAX / img.width : 1
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.round(img.width * scale)
+      canvas.height = Math.round(img.height * scale)
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.65))
+    }
+    img.onerror = () => resolve(dataUrl) // fallback: use original
+    img.src = dataUrl
+  })
+}
+
 function formatShortDate(isoDate: string | null): string {
   if (!isoDate) return ''
   try {
@@ -252,15 +292,18 @@ function UploadScreen({ onParsed, onManual, onBack }: { onParsed: (d: any) => vo
         confidence: p.confidence || {},
       }))
 
-      let gameDate: string | null = parsed.date || null
+      let gameDate: string | null = normalizeDateStr(parsed.date)
       let dateSource: string | null = null
       if (gameDate) { dateSource = 'sheet' }
       if (!gameDate) { const exif = extractExifDate(base64); if (exif) { gameDate = exif; dateSource = 'photo' } }
       if (!gameDate && file.lastModified) { gameDate = new Date(file.lastModified).toISOString().slice(0, 10); dateSource = 'file' }
       if (!gameDate) { gameDate = new Date().toISOString().slice(0, 10); dateSource = 'today' }
 
+      // Compress image for storage (max 900px, JPEG 0.65)
+      const compressedImage = await compressImage(previewUrl)
+
       const detectedHost = players.find(p => p.isHostDetected)
-      onParsed({ players, warnings: parsed.warnings || [], previewUrl, gameDate, dateSource, detectedHostId: detectedHost?.id || null })
+      onParsed({ players, warnings: parsed.warnings || [], previewUrl: compressedImage, gameDate, dateSource, detectedHostId: detectedHost?.id || null })
     } catch {
       setError('Could not read the image. Try manual entry instead.')
     } finally { setLoading(false) }
@@ -1284,26 +1327,18 @@ export default function PokerApp() {
   const handleSaveGame = async (record: any) => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
-    // Save game first — never block on image upload
     const row: any = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
-    const { data, error } = await supabase.from('games').insert(row).select().single()
+    // Store compressed image directly as base64 data URL
+    if (record.previewUrl) row.scoresheet_url = record.previewUrl
+    let { data, error } = await supabase.from('games').insert(row).select().single()
+    // If scoresheet_url column doesn't exist yet, retry without it
+    if (error && record.previewUrl) {
+      const rowWithout = { ...row }; delete rowWithout.scoresheet_url
+      const retry = await supabase.from('games').insert(rowWithout).select().single()
+      data = retry.data; error = retry.error
+    }
     if (error || !data) { console.error('Save failed:', error?.message); return }
     setGames(prev => [data as GameRecord, ...prev])
-    // Upload scoresheet image in the background (best-effort)
-    if (record.previewUrl) {
-      try {
-        const res = await fetch(record.previewUrl)
-        const blob = await res.blob()
-        const ext = blob.type.includes('png') ? 'png' : 'jpg'
-        const fileName = `${(data as any).id}.${ext}`
-        const { error: upErr } = await supabase.storage.from('scoresheets').upload(fileName, blob, { contentType: blob.type })
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from('scoresheets').getPublicUrl(fileName)
-          await supabase.from('games').update({ scoresheet_url: urlData.publicUrl }).eq('id', (data as any).id)
-          setGames(prev => prev.map(g => g.id === (data as any).id ? { ...g, scoresheet_url: urlData.publicUrl } : g))
-        }
-      } catch { /* image upload failed — game already saved */ }
-    }
   }
 
   const handleDeleteGame = (id: string) => {
