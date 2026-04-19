@@ -1298,9 +1298,11 @@ export default function PokerApp() {
         }
       } catch { /* upload failed — save without image */ }
     }
-    const row = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId, scoresheet_url: scoresheetUrl }
+    const row: any = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    if (scoresheetUrl) row.scoresheet_url = scoresheetUrl
     const { data, error } = await supabase.from('games').insert(row).select().single()
     if (!error && data) setGames(prev => [data as GameRecord, ...prev])
+    else if (error) console.error('Save failed:', error.message)
   }
 
   const handleDeleteGame = (id: string) => {
