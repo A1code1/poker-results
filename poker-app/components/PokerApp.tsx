@@ -1284,25 +1284,26 @@ export default function PokerApp() {
   const handleSaveGame = async (record: any) => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
-    let scoresheetUrl: string | null = null
+    // Save game first — never block on image upload
+    const row: any = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    const { data, error } = await supabase.from('games').insert(row).select().single()
+    if (error || !data) { console.error('Save failed:', error?.message); return }
+    setGames(prev => [data as GameRecord, ...prev])
+    // Upload scoresheet image in the background (best-effort)
     if (record.previewUrl) {
       try {
         const res = await fetch(record.previewUrl)
         const blob = await res.blob()
         const ext = blob.type.includes('png') ? 'png' : 'jpg'
-        const fileName = `${Date.now()}.${ext}`
+        const fileName = `${(data as any).id}.${ext}`
         const { error: upErr } = await supabase.storage.from('scoresheets').upload(fileName, blob, { contentType: blob.type })
         if (!upErr) {
           const { data: urlData } = supabase.storage.from('scoresheets').getPublicUrl(fileName)
-          scoresheetUrl = urlData.publicUrl
+          await supabase.from('games').update({ scoresheet_url: urlData.publicUrl }).eq('id', (data as any).id)
+          setGames(prev => prev.map(g => g.id === (data as any).id ? { ...g, scoresheet_url: urlData.publicUrl } : g))
         }
-      } catch { /* upload failed — save without image */ }
+      } catch { /* image upload failed — game already saved */ }
     }
-    const row: any = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
-    if (scoresheetUrl) row.scoresheet_url = scoresheetUrl
-    const { data, error } = await supabase.from('games').insert(row).select().single()
-    if (!error && data) setGames(prev => [data as GameRecord, ...prev])
-    else if (error) console.error('Save failed:', error.message)
   }
 
   const handleDeleteGame = (id: string) => {
