@@ -73,7 +73,7 @@ Rules for other fields:
 - isHost: true if description mentions asterisk, star, or host marker next to the name
 - name: clean name only, no asterisk or marker characters
 - washoutChips: the final chip count (integer >= 0)
-- date: if a date is mentioned in the description, convert to YYYY-MM-DD, else null
+- date: if a date is mentioned in the description, convert to YYYY-MM-DD, else null. IMPORTANT: dates on these sheets use European format DD.MM.YY or DD.MM.YYYY (day first, then month, then year). For example "18.4.26" means day=18, month=4, year=2026 → "2026-04-18". A 2-digit year like "26" means 2026. Never interpret the first number as the year.
 - confidence: set buyingCount confidence to 0.6 if the description is ambiguous about the count`
           }]
         },

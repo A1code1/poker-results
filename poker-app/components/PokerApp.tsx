@@ -582,8 +582,8 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
     <div style={{ maxWidth: 760, margin: '0 auto', padding: '1.5rem 1rem' }}>
       <div ref={cardRef} style={{ background: T.surface, padding: '1.25rem', borderRadius: T.radius }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: '1.5rem' }}>
-          <BackBtn onClick={onBack} label="Edit" />
-          <div>
+          <BackBtn onClick={onBack} label="Home" />
+          <div style={{ flex: 1 }}>
             <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.text }}>Final results</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
               {editingDate ? (
@@ -607,25 +607,20 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
                   {dateSaved ? '✓ Saved' : dateChanged ? 'Save date' : 'Update date'}
                 </button>
               )}
+              {photoUrl && (
+                <button onClick={() => setShowPhoto(true)} style={{ fontSize: 11, background: '#eef2ff', color: T.accent, border: `1px solid #c7d2fe`, borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontWeight: 600 }}>📷 View score sheet</button>
+              )}
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: photoUrl ? '0.75rem' : '1.25rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginBottom: '1.25rem' }}>
           <MetricCard label="Players" value={summary.totalPlayers} />
           <MetricCard label="Total buyings" value={summary.totalBuyings} />
           <MetricCard label="Pot size" value={`\u20ac${summary.totalInvestedEuro}`} />
           <MetricCard label="Host fee pool" value={`\u20ac${summary.totalHostFeePool}`} />
           <MetricCard label="Host" value={summary.hostName} />
         </div>
-
-        {photoUrl && (
-          <button onClick={() => setShowPhoto(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#eef2ff', border: `1px solid #c7d2fe`, borderRadius: 10, padding: '10px 16px', marginBottom: '1.25rem', cursor: 'pointer', width: '100%', fontSize: 14, color: T.accent, fontWeight: 600 }}>
-            <span style={{ fontSize: 20 }}>📷</span>
-            <span>View score sheet</span>
-            <span style={{ marginLeft: 'auto', fontSize: 12, color: T.textMuted, fontWeight: 400 }}>tap to open</span>
-          </button>
-        )}
 
         {summary.normalizationApplied && (
           <div style={{ background: T.yellowBg, border: `1px solid rgba(234,179,8,0.3)`, borderRadius: 8, padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: 13, color: T.yellowText }}>
