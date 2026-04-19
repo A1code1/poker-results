@@ -1332,36 +1332,45 @@ export default function PokerApp() {
   const handleSaveGame = async (record: any) => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
-    const row: any = { game_date: gameDate, date_source: dateSource, summary: record.summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
-    // Store compressed image directly as base64 data URL
-    if (record.previewUrl) row.scoresheet_url = record.previewUrl
-    let { data, error } = await supabase.from('games').insert(row).select().single()
-    // If scoresheet_url column doesn't exist yet, retry without it
-    if (error && record.previewUrl) {
-      const rowWithout = { ...row }; delete rowWithout.scoresheet_url
-      const retry = await supabase.from('games').insert(rowWithout).select().single()
-      data = retry.data; error = retry.error
-    }
+    // Store scoresheet image inside summary JSONB (no schema change needed)
+    const summary = record.previewUrl
+      ? { ...record.summary, scoresheetImage: record.previewUrl }
+      : record.summary
+    const row: any = { game_date: gameDate, date_source: dateSource, summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
+    const { data, error } = await supabase.from('games').insert(row).select().single()
     if (error || !data) { console.error('Save failed:', error?.message); return }
     setGames(prev => [data as GameRecord, ...prev])
   }
 
-  const handleDeleteGame = (id: string) => {
+  const handleDeleteGame = async (id: string) => {
     const deletedGame = games.find(g => g.id === id)
     if (!deletedGame) return
-    if (undoState) { clearTimeout(undoState.timeoutId); supabase.from('games').delete().eq('id', undoState.game.id) }
+    // Cancel previous undo if still pending (that game is already re-inserted or cleared)
+    if (undoState) clearTimeout(undoState.timeoutId)
+    // Remove from UI and delete from DB immediately — refresh-safe
     setGames(prev => prev.filter(g => g.id !== id))
-    const timeoutId = setTimeout(async () => {
-      await supabase.from('games').delete().eq('id', id)
-      setUndoState(null)
-    }, 8000)
+    await supabase.from('games').delete().eq('id', id)
+    // Start undo window: clear toast after 8s
+    const timeoutId = setTimeout(() => setUndoState(null), 8000)
     setUndoState({ game: deletedGame, timeoutId })
   }
 
-  const handleUndoDelete = () => {
+  const handleUndoDelete = async () => {
     if (!undoState) return
     clearTimeout(undoState.timeoutId)
-    setGames(prev => [...prev, undoState.game].sort((a, b) => ((b.game_date || b.gameDate) || '').localeCompare((a.game_date || a.gameDate) || '')))
+    // Re-insert the original game record with its original ID
+    const g = undoState.game
+    const row: any = {
+      id: g.id,
+      game_date: g.game_date || g.gameDate,
+      date_source: g.date_source || g.dateSource,
+      summary: g.summary, results: g.results, settlements: g.settlements,
+      players: g.players, host_id: g.host_id || g.hostId,
+    }
+    if ((g as any).scoresheet_url) row.scoresheet_url = (g as any).scoresheet_url
+    const { data } = await supabase.from('games').insert(row).select().single()
+    const restored = (data as GameRecord) || g
+    setGames(prev => [...prev, restored].sort((a, b) => ((b.game_date || b.gameDate) || '').localeCompare((a.game_date || a.gameDate) || '')))
     setUndoState(null)
   }
 
@@ -1390,7 +1399,7 @@ export default function PokerApp() {
       {screen === 'settings' && <SettingsScreen registry={registry} onBack={() => setScreen('home')} onAdd={handleAddPlayer} onUpdate={handleUpdatePlayer} onDelete={handleDeletePlayer} />}
       {screen === 'tournament' && <TournamentScreen games={games} loading={gamesLoading} onBack={() => setScreen('home')} />}
       {screen === 'analysis' && <AnalysisScreen games={games} registry={registry} onBack={() => setScreen('home')} />}
-      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} scoresheetUrl={viewingGame.scoresheet_url} onBack={() => setScreen('history')} onHome={() => setScreen('home')} onDateChange={(date: string, source: string) => {
+      {screen === 'view-game' && viewingGame && <ResultsScreen players={viewingGame.players} hostId={viewingGame.host_id || viewingGame.hostId} gameDate={viewingGame.game_date || viewingGame.gameDate} dateSource={viewingGame.date_source || viewingGame.dateSource} gameId={viewingGame.id} scoresheetUrl={(viewingGame.summary as any)?.scoresheetImage || viewingGame.scoresheet_url} onBack={() => setScreen('history')} onHome={() => setScreen('home')} onDateChange={(date: string, source: string) => {
         supabase.from('games').update({ game_date: date, date_source: source }).eq('id', viewingGame.id)
         setGames(prev => prev.map(g => g.id === viewingGame.id ? { ...g, game_date: date, gameDate: date, date_source: source, dateSource: source } : g))
         setViewingGame(prev => prev ? { ...prev, game_date: date, gameDate: date, date_source: source, dateSource: source } : prev)
