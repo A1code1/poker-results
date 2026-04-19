@@ -4,6 +4,7 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  generateBuildId: () => require('crypto').randomBytes(8).toString('hex'),
 }
 
 module.exports = nextConfig
