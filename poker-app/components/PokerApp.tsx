@@ -510,6 +510,8 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
   const { summary, results, settlements } = calculate(players, hostId)
   const [imgStatus, setImgStatus] = useState('idle')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [savedGameId, setSavedGameId] = useState<string | null>(gameId || null)
+  const [saveAndCopyStatus, setSaveAndCopyStatus] = useState<'idle' | 'saving' | 'done'>('idle')
   const [gameDate, setGameDate] = useState<string>(initDate || new Date().toISOString().slice(0, 10))
   const [dateSource, setDateSource] = useState<string>(initSource || 'today')
   const [editingDate, setEditingDate] = useState(false)
@@ -694,20 +696,34 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
           ))}
         </Card>
 
-      <Btn onClick={handleShare} disabled={imgStatus === 'loading'} variant={imgStatus === 'copied' || imgStatus === 'downloaded' ? 'ghost' : 'primary'} style={{ marginBottom: 8 }}>
-        {imgStatus === 'loading' && '⏳ Generating image...'}
-        {imgStatus === 'copied' && '✓ Image copied — paste in WhatsApp!'}
-        {imgStatus === 'downloaded' && '✓ Image saved — share from your photos!'}
-        {imgStatus === 'error' && '⚠️ Could not generate image'}
-        {imgStatus === 'idle' && '📸 Save as image to share'}
-      </Btn>
+      {!readOnly && onSave && (
+        <Btn disabled={saveAndCopyStatus === 'saving'} variant={saveAndCopyStatus === 'done' ? 'ghost' : 'primary'} style={{ marginBottom: 8 }} onClick={async () => {
+          if (saveAndCopyStatus === 'saving') return
+          setSaveAndCopyStatus('saving')
+          let id = savedGameId
+          if (!id) {
+            id = await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements, previewUrl })
+            if (id) setSavedGameId(id)
+          }
+          if (id) {
+            const url = `${window.location.origin}/game/${id}`
+            navigator.clipboard.writeText(url).then(() => {}).catch(() => { window.prompt('Copy this link:', url) })
+          }
+          setSaveAndCopyStatus('done')
+          setTimeout(() => setSaveAndCopyStatus('idle'), 3000)
+        }}>
+          {saveAndCopyStatus === 'saving' && '⏳ Saving...'}
+          {saveAndCopyStatus === 'done' && '✓ Saved & link copied!'}
+          {saveAndCopyStatus === 'idle' && '💾 Save results and copy link'}
+        </Btn>
+      )}
 
-      {gameId && (
+      {savedGameId && saveAndCopyStatus === 'idle' && (
         <Btn onClick={() => {
-          const url = `${window.location.origin}/game/${gameId}`
+          const url = `${window.location.origin}/game/${savedGameId}`
           navigator.clipboard.writeText(url).then(() => { setLinkCopied(true); setTimeout(() => setLinkCopied(false), 3000) }).catch(() => { window.prompt('Copy this link:', url) })
-        }} variant="ghost" style={{ marginBottom: '1rem' }}>
-          {linkCopied ? '✓ Link copied!' : '🔗 Copy shareable link'}
+        }} variant="ghost" style={{ marginBottom: 8 }}>
+          {linkCopied ? '✓ Link copied!' : '🔗 Copy link again'}
         </Btn>
       )}
 
@@ -731,10 +747,16 @@ function ResultsScreen({ players, hostId, gameDate: initDate, dateSource: initSo
         </div>
       )}
 
-      {!readOnly && onSave && (
+      {!readOnly && onSave && saveLabel && (
         <Btn onClick={async () => { await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements, previewUrl }); onHome?.() }} variant="ghost" style={{ marginTop: 10 }}>
-          {saveLabel || '💾 Save game & go home'}
+          {saveLabel}
         </Btn>
+      )}
+      {!readOnly && onSave && !saveLabel && onHome && (
+        <Btn onClick={async () => {
+          if (!savedGameId) await onSave({ players, hostId, gameDate, dateSource, summary, results, settlements, previewUrl })
+          onHome()
+        }} variant="ghost" style={{ marginTop: 8 }}>🏠 Go home</Btn>
       )}
       {!readOnly && onCancel && (
         <Btn onClick={onCancel} variant="ghost" style={{ marginTop: 8, opacity: 0.7 }}>Cancel</Btn>
@@ -1324,7 +1346,7 @@ export default function PokerApp() {
     }
   }
 
-  const handleSaveGame = async (record: any) => {
+  const handleSaveGame = async (record: any): Promise<string | null> => {
     const gameDate = record.gameDate || finalGameDate || new Date().toISOString().slice(0, 10)
     const dateSource = record.dateSource || finalDateSource || 'today'
     // Store scoresheet image inside summary JSONB (no schema change needed)
@@ -1333,8 +1355,9 @@ export default function PokerApp() {
       : record.summary
     const row: any = { game_date: gameDate, date_source: dateSource, summary, results: record.results, settlements: record.settlements, players: record.players, host_id: record.hostId }
     const { data, error } = await supabase.from('games').insert(row).select().single()
-    if (error || !data) { console.error('Save failed:', error?.message); return }
+    if (error || !data) { console.error('Save failed:', error?.message); return null }
     setGames(prev => [data as GameRecord, ...prev])
+    return (data as GameRecord).id
   }
 
   const handleDeleteGame = async (id: string) => {
